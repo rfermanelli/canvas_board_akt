@@ -7,3 +7,6 @@ server/uploads/
 
 # Impostazioni locali dell'ambiente (non condividere in repo pubblico)
 .claude/settings.local.json
+
+# Agenti del team (non versionare su repo pubblico)
+.claude/agents/
