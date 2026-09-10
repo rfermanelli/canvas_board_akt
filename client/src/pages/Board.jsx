@@ -349,6 +349,27 @@ export default function Board() {
   // Persistenza posizione/orientamento della toolbar.
   useEffect(() => { try { localStorage.setItem('cb.toolbar', JSON.stringify(toolbar)); } catch {} }, [toolbar]);
 
+  // Anti-sparizione: al mount, al resize e quando la barra ricompare/cambia orientamento,
+  // ri-clampa una `pos` salvata dentro i limiti correnti del parent (stesse semantiche del drag).
+  // Recupera automaticamente una pos stantia finita off-screen (viewport più piccola, ecc.).
+  useEffect(() => {
+    const clamp = () => {
+      const bar = barRef.current; if (!bar) return;
+      const par = bar.parentElement; if (!par) return;
+      const rect = bar.getBoundingClientRect(), parRect = par.getBoundingClientRect();
+      setToolbar((tb) => {
+        if (!tb.pos) return tb; // default (basso-centro): niente da clampare
+        const x = Math.max(0, Math.min(parRect.width - rect.width, tb.pos.x));
+        const y = Math.max(0, Math.min(parRect.height - rect.height, tb.pos.y));
+        if (x === tb.pos.x && y === tb.pos.y) return tb; // guardia anti-loop: nessun cambio, nessun re-render
+        return { ...tb, pos: { x, y } };
+      });
+    };
+    clamp();
+    window.addEventListener('resize', clamp);
+    return () => window.removeEventListener('resize', clamp);
+  }, [presenting, canEdit, toolbar.orient]);
+
   // Metadati (nome/ruolo) via REST. Gli oggetti arrivano da Yjs, non da qui.
   useEffect(() => {
     api.get(`/boards/${id}`).then((b) => { setName(b.name); setRole(b.role); })
@@ -1593,7 +1614,8 @@ export default function Board() {
             const sep = vert ? { width: 34, height: 1, background: '#e5e7eb', margin: '4px 0' } : t.sep;
             return (
             <div ref={barRef} style={barStyle}>
-              <div title="Trascina per spostare la barra" onPointerDown={startToolbarMove}
+              <div title="Trascina per spostare la barra (doppio-clic: riporta al centro-basso)" onPointerDown={startToolbarMove}
+                onDoubleClick={() => setToolbar((tb) => ({ ...tb, pos: null }))}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: vert ? '100%' : 20, height: vert ? 20 : 40, cursor: 'grab', color: '#adb5bd', touchAction: 'none' }}>
                 {vert ? <GripHorizontal size={18} /> : <GripVertical size={18} />}
               </div>
