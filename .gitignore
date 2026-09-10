@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+server/uploads/
+*.log
+
+# Impostazioni locali dell'ambiente (non condividere in repo pubblico)
+.claude/settings.local.json
