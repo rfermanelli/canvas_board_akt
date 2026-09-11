@@ -124,7 +124,7 @@ cd client && npm install && npm run dev             # Vite dev server
 ---
 
 ## 5. Note su sicurezza e produzione
-- Terminare **TLS/HTTPS** davanti a nginx (es. Caddy/Traefik/certbot) per il deploy remoto.
+- Terminare **TLS/HTTPS** davanti a nginx (es. Traefik/certbot) per il deploy remoto.
 - Restringere il **CORS** del server all'origine reale.
 - Rigenerare tutti i **segreti** (`JWT_SECRET`, password DB) e non versionarli.
 - I media sono serviti con `X-Content-Type-Options: nosniff` (e gli SVG come download) per
