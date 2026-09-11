@@ -133,8 +133,8 @@ function makeShape(toolKind, pos, color) {
   if (toolKind === 'ellipse') return { ...base, type: 'ellipse', rx: 60, ry: 40 };
   if (toolKind === 'star') return { ...base, type: 'star', radius: 55, innerRadius: 24 };
   if (POLY_SIDES[toolKind]) return { ...base, type: 'poly', sides: POLY_SIDES[toolKind], radius: 60, rotation: 0 };
-  if (toolKind === 'arrow') return { id: base.id, type: 'arrow', x: 0, y: 0, points: [pos.x, pos.y, pos.x + 140, pos.y], stroke: color, strokeWidth: 4, rotation: 0 };
-  if (toolKind === 'straight') return { id: base.id, type: 'straight', x: 0, y: 0, points: [pos.x, pos.y, pos.x + 140, pos.y], stroke: color, strokeWidth: 4, rotation: 0 };
+  if (toolKind === 'arrow') return { id: base.id, type: 'arrow', x: 0, y: 0, points: [pos.x, pos.y, pos.x + 140, pos.y], stroke: color, strokeWidth: 4, heads: 'end', rotation: 0 };
+  if (toolKind === 'straight') return { id: base.id, type: 'straight', x: 0, y: 0, points: [pos.x, pos.y, pos.x + 140, pos.y], stroke: color, strokeWidth: 4, heads: 'none', rotation: 0 };
   if (toolKind === 'roundrect') return { ...base, type: 'rect', width: 120, height: 80, cornerRadius: 18 };
   // Poligoni non regolari (triangolo rettangolo/parallelogramma/trapezio): Line chiusa, punti assoluti.
   const cpoly = (points) => ({ id: base.id, type: 'cpoly', x: 0, y: 0, fill: '#ffffff', stroke: color, strokeWidth: 2, closed: true, rotation: 0, points });
@@ -307,6 +307,7 @@ export default function Board() {
   const [toolPop, setToolPop] = useState(null);       // popover opzioni strumento: 'pen'|'highlighter'|'eraser'|'note'
   const [noteColor, setNoteColor] = useState(0);      // indice colore nota corrente in NOTE_COLORS
   const [connectFrom, setConnectFrom] = useState(null); // id oggetto sorgente durante la creazione di un connettore
+  const [lineDraft, setLineDraft] = useState(null); // freccia/linea in fase di disegno per trascinamento (stile Office)
   const [stampEmoji, setStampEmoji] = useState('👍');   // emoji corrente da timbrare (tool 'stamp')
   const [marqueeBox, setMarqueeBox] = useState(null);   // rettangolo di selezione ad area {x,y,w,h} (coord. canvas)
   const marqueeRef = useRef(null);                       // punto di partenza del marquee
@@ -679,6 +680,11 @@ export default function Board() {
     const pos = pointerPos();
     // Timbro emoji/reazione: crea un oggetto testo con l'emoji (lo strumento resta attivo).
     if (tool === 'stamp') { addObject({ id: uid(), type: 'text', x: pos.x, y: pos.y, text: stampEmoji, fontSize: 46, fill: '#212529', fontFamily: FONT, rotation: 0 }); return; }
+    // Freccia/linea: si disegnano trascinando dal punto iniziale a quello finale (come Office).
+    if (tool === 'arrow' || tool === 'straight') {
+      setLineDraft({ id: uid(), type: tool, x: 0, y: 0, points: [pos.x, pos.y, pos.x, pos.y], stroke: color, strokeWidth: 4, heads: tool === 'arrow' ? 'end' : 'none', rotation: 0 });
+      return;
+    }
     if (SHAPE_TOOLS.includes(tool)) { const s = makeShape(tool, pos, color); if (s) addObject(s); }
     if (tool === 'sticky') {
       const note = { id: uid(), type: 'sticky', x: pos.x, y: pos.y, width: 200, height: 200, text: '', fill: NOTE_COLORS[noteColor].fill, stroke: NOTE_COLORS[noteColor].border, fontFamily: FONTS[0].key, fontSize: 18, textColor: readable(NOTE_COLORS[noteColor].fill), author: user?.displayName || user?.email || '', rotation: 0 };
@@ -706,6 +712,7 @@ export default function Board() {
     // Cursore condiviso (effimero).
     if (awareness.current) { const p = pointerPos(); awareness.current.setLocalStateField('cursor', p); }
     if ((tool === 'pen' || tool === 'highlighter') && draft) setDraft((d) => ({ ...d, points: d.points.concat([pointerPos().x, pointerPos().y]) }));
+    if (lineDraft) { const p = pointerPos(); setLineDraft((d) => ({ ...d, points: [d.points[0], d.points[1], p.x, p.y] })); }
     if (tool === 'eraser') { const p = pointerPos(); setEraserPos(p); if (erasing.current) eraseAtPoint(p); }
     if (marqueeRef.current) { const p = pointerPos(); const s = marqueeRef.current; setMarqueeBox({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) }); }
   }
@@ -713,6 +720,13 @@ export default function Board() {
     if (presenting) return;
     erasing.current = false;
     if ((tool === 'pen' || tool === 'highlighter') && draft) { setObj(draft); setDraft(null); } // lo strumento resta attivo
+    // Fine disegno freccia/linea: se il trascinamento è quasi nullo (clic secco) uso un segmento di default.
+    if (lineDraft) {
+      const [x1, y1, x2, y2] = lineDraft.points;
+      const final = Math.hypot(x2 - x1, y2 - y1) < 6 ? { ...lineDraft, points: [x1, y1, x1 + 140, y1] } : lineDraft;
+      addObject(final);
+      setLineDraft(null);
+    }
     // Fine selezione ad area: seleziona gli oggetti che intersecano il rettangolo (clic secco = deseleziona).
     if (marqueeRef.current) {
       const s = marqueeRef.current; marqueeRef.current = null;
@@ -1086,8 +1100,30 @@ export default function Board() {
   // Oggetto testo selezionato da solo -> barra di formattazione (colore/carattere/dimensione).
   const selText = selectedIds.length === 1 ? objects.find((o) => o.id === selectedIds[0] && o.type === 'text') : null;
   const patchText = (patch) => { if (!selText) return; newStep(); updateObject({ ...selText, ...patch }); };
+  // Freccia/linea selezionata da sola -> barra per scegliere la punta (nessuna/un estremo/entrambi).
+  const selLine = selectedIds.length === 1 ? objects.find((o) => o.id === selectedIds[0] && (o.type === 'arrow' || o.type === 'straight')) : null;
+  const patchLine = (patch) => { if (!selLine) return; newStep(); updateObject({ ...selLine, ...patch }); };
   // Chiude i sotto-menù della barra nota quando cambia la selezione.
   useEffect(() => { setNoteMenu(null); }, [selectedIds]);
+
+  // Barra della punta per freccia/linea selezionata: nessuna / a un estremo / a entrambi.
+  function lineHeadBar(o, patch) {
+    const mx = o.x + (o.points[0] + o.points[2]) / 2;
+    const my = o.y + (o.points[1] + o.points[3]) / 2;
+    const p = toScreen(mx, my);
+    const cur = o.heads || (o.type === 'arrow' ? 'end' : 'none');
+    const opt = (val, label, title) => (
+      <button title={title} onClick={() => patch({ heads: val })}
+        style={{ ...nt.btn, minWidth: 32, justifyContent: 'center', fontSize: 16, background: cur === val ? '#4c6ef5' : 'transparent', color: cur === val ? '#fff' : '#e8e8ee' }}>{label}</button>
+    );
+    return (
+      <div style={{ ...nt.bar, left: p.x, top: Math.max(46, p.y - 8) }}>
+        {opt('none', '—', 'Nessuna punta')}
+        {opt('end', '→', 'Punta a un estremo')}
+        {opt('both', '↔', 'Punta a entrambi gli estremi')}
+      </div>
+    );
+  }
 
   // Barra di formattazione riusabile TALE E QUALE per note e testo. Campi mappati:
   // nota  -> sfondo=fill, testo=textColor, bordo=stroke ; testo -> sfondo=bg, testo=fill, bordo=stroke.
@@ -1300,8 +1336,14 @@ export default function Board() {
                 // Poligoni regolari (triangolo/rombo/pentagono/esagono) e stella.
                 if (o.type === 'poly') return <RegularPolygon key={o.id} ref={setRef(o.id)} {...nodeProps(o)} x={o.x} y={o.y} sides={o.sides} radius={o.radius} fill={o.fill} stroke={o.stroke} strokeWidth={o.strokeWidth} opacity={o.opacity} rotation={o.rotation} />;
                 if (o.type === 'star') return <Star key={o.id} ref={setRef(o.id)} {...nodeProps(o)} x={o.x} y={o.y} numPoints={5} innerRadius={o.innerRadius} outerRadius={o.radius} fill={o.fill} stroke={o.stroke} strokeWidth={o.strokeWidth} opacity={o.opacity} rotation={o.rotation} />;
-                if (o.type === 'arrow') return <Arrow key={o.id} ref={setRef(o.id)} {...nodeProps(o)} x={o.x} y={o.y} points={o.points} stroke={o.stroke} fill={o.stroke} strokeWidth={o.strokeWidth} pointerLength={12} pointerWidth={12} rotation={o.rotation} hitStrokeWidth={Math.max(o.strokeWidth || 4, 12)} />;
-                if (o.type === 'straight') return <Line key={o.id} ref={setRef(o.id)} {...nodeProps(o)} x={o.x} y={o.y} points={o.points} stroke={o.stroke} strokeWidth={o.strokeWidth} lineCap="round" rotation={o.rotation} hitStrokeWidth={Math.max(o.strokeWidth || 4, 12)} />;
+                if (o.type === 'arrow' || o.type === 'straight') {
+                  // La punta segue `heads` (nessuna/un estremo/entrambi), non più il tipo:
+                  // così una linea può diventare freccia e viceversa. Default retro-compatibile.
+                  const heads = o.heads || (o.type === 'arrow' ? 'end' : 'none');
+                  const common = { key: o.id, ref: setRef(o.id), ...nodeProps(o), x: o.x, y: o.y, points: o.points, stroke: o.stroke, strokeWidth: o.strokeWidth, rotation: o.rotation, hitStrokeWidth: Math.max(o.strokeWidth || 4, 12) };
+                  if (heads === 'none') return <Line {...common} lineCap="round" />;
+                  return <Arrow {...common} fill={o.stroke} pointerLength={12} pointerWidth={12} pointerAtBeginning={heads === 'both'} pointerAtEnding />;
+                }
                 // Tratti a mano libera: selezionabili/cancellabili (clic con generoso
                 // hitStrokeWidth + evidenziazione se selezionati). La gomma parziale resta
                 // gestita a livello di Stage (eraseAtPoint), non con un delete dell'intera linea.
@@ -1339,6 +1381,9 @@ export default function Board() {
                 return null;
               })}
               {draft && <Line points={draft.points} stroke={draft.stroke} strokeWidth={draft.strokeWidth} opacity={draft.opacity ?? 1} lineCap="round" lineJoin="round" tension={0.3} />}
+              {lineDraft && (lineDraft.heads === 'none'
+                ? <Line points={lineDraft.points} stroke={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} lineCap="round" />
+                : <Arrow points={lineDraft.points} stroke={lineDraft.stroke} fill={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} pointerLength={12} pointerWidth={12} pointerAtBeginning={lineDraft.heads === 'both'} pointerAtEnding />)}
               {marqueeBox && (marqueeBox.w > 0 || marqueeBox.h > 0) && <Rect x={marqueeBox.x} y={marqueeBox.y} width={marqueeBox.w} height={marqueeBox.h} fill="rgba(76,110,245,0.10)" stroke="#4c6ef5" strokeWidth={1 / view.scale} dash={[5 / view.scale, 4 / view.scale]} listening={false} />}
               {tool === 'eraser' && eraserPos && <Circle x={eraserPos.x} y={eraserPos.y} radius={eraserWidth / view.scale}
                 stroke="#e03131" strokeWidth={1 / view.scale} dash={[4 / view.scale, 4 / view.scale]} fill="rgba(224,49,49,0.08)" listening={false} />}
@@ -1483,6 +1528,7 @@ export default function Board() {
             {/* Barra di formattazione (identica) per NOTA e TESTO selezionati singolarmente. */}
             {selNote && canEdit && formatBar(selNote, patchNote, true)}
             {selText && canEdit && formatBar(selText, patchText, false)}
+            {selLine && canEdit && lineHeadBar(selLine, patchLine)}
           </div>
 
           {/* Card in alto a sinistra: menù principale + nome + Free (stile FigJam). */}
