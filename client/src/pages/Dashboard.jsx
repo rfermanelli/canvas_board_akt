@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { toast, askText, askConfirm } from '../ui.js';
+import { toast, askText, askConfirm, alertError } from '../ui.js';
 import { Presentation, Plus } from 'lucide-react';
 
 export default function Dashboard() {
@@ -36,7 +36,7 @@ export default function Dashboard() {
     if (!email) return;
     const role = (await askConfirm('Che permesso vuoi assegnare?', 'Editor', 'Viewer')) ? 'editor' : 'viewer';
     try { await api.post(`/boards/${b.id}/share`, { email, role }); toast('Lavagna condivisa!'); }
-    catch (e) { toast(e.message); }
+    catch (e) { alertError(e.message); }
   }
 
   return (

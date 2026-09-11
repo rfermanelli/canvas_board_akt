@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { api, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { toast, askText, askConfirm } from '../ui.js';
+import { toast, askText, askConfirm, alertError } from '../ui.js';
 import {
   MousePointer2, Hand, Pen, Highlighter, Eraser, Shapes, Type, StickyNote, Plus,
   Menu, Save, Download, Undo2, Redo2, Check, Layers, ArrowLeft, Users, Clapperboard,
@@ -371,7 +371,7 @@ export default function Board() {
   // Metadati (nome/ruolo) via REST. Gli oggetti arrivano da Yjs, non da qui.
   useEffect(() => {
     api.get(`/boards/${id}`).then((b) => { setName(b.name); setRole(b.role); })
-      .catch((e) => { toast(e.message); nav('/'); });
+      .catch(async (e) => { await alertError(e.message); nav('/'); });
   }, [id]);
 
   // Setup Yjs (doc + provider + awareness + undo manager).
@@ -557,7 +557,7 @@ export default function Board() {
     const name = await askText('Nome della nuova lavagna:', 'Senza titolo');
     if (name === null) return;
     try { const b = await api.post('/boards', { name }); nav(`/board/${b.id}`); }
-    catch (e) { toast(e.message); }
+    catch (e) { alertError(e.message); }
   }
 
   // ⑨ Export dell'INTERO canvas (non solo la porzione visibile): attiva `exporting`
@@ -588,7 +588,7 @@ export default function Board() {
         a.download = `${name || 'board'}.png`;
         a.href = uri;
         a.click();
-      } catch (e) { toast('Export fallito: ' + e.message); }
+      } catch (e) { alertError('Export fallito: ' + e.message); }
       setExporting(false);
     });
     return () => cancelAnimationFrame(raf);
@@ -605,7 +605,7 @@ export default function Board() {
       else if (kind === 'pdf') addObject({ id: uid(), type: 'pdf', x: 120, y: 120, width: 420, height: 560, src: url, name: file.name, rotation: 0 });
       else if (kind === 'pptx') addObject({ id: uid(), type: 'pptx', x: 140, y: 140, width: 440, height: 340, src: url, pdf: pdfUrl || undefined, name: file.name, rotation: 0 });
       else addObject({ id: uid(), type: 'image', x: 100, y: 100, width: 240, height: 180, src: url, rotation: 0 });
-    } catch (err) { toast(err.message); }
+    } catch (err) { alertError(err.message); }
     e.target.value = '';
   }
   // Apre il .pptx DIRETTAMENTE in PowerPoint desktop tramite lo schema URI di Office
@@ -979,11 +979,11 @@ export default function Board() {
     if (!email) return;
     const r = (await askConfirm('Che permesso vuoi assegnare?', 'Editor', 'Viewer')) ? 'editor' : 'viewer';
     try { await api.post(`/boards/${id}/share`, { email, role: r }); toast('Lavagna condivisa!'); loadCollabs(); }
-    catch (e) { toast(e.message); } // es. "Utente non trovato" (email non registrata)
+    catch (e) { alertError(e.message); } // es. "Utente non trovato" (email non registrata)
   }
   async function loadCollabs() {
     try { setCollabs(await api.get(`/boards/${id}/collaborators`)); }
-    catch (e) { toast(e.message); }
+    catch (e) { alertError(e.message); }
   }
   function toggleCollabs() {
     setShowScenes(false); // i due pannelli laterali sono mutuamente esclusivi (stessa posizione)
@@ -991,12 +991,12 @@ export default function Board() {
   }
   async function changeRole(email, newRole) {
     try { await api.post(`/boards/${id}/share`, { email, role: newRole }); loadCollabs(); }
-    catch (e) { toast(e.message); }
+    catch (e) { alertError(e.message); }
   }
   async function revoke(userId) {
     if (!(await askConfirm('Revocare la condivisione a questo utente?', 'Revoca', 'Annulla'))) return;
     try { await api.del(`/boards/${id}/share/${userId}`); loadCollabs(); }
-    catch (e) { toast(e.message); }
+    catch (e) { alertError(e.message); }
   }
 
   // --- Scene / presentazione (⑩) ---

@@ -117,6 +117,27 @@ export function askTextarea(label, def = '') {
   });
 }
 
+// Avviso d'errore: stessa modale di askText (titolo in grassetto + messaggio),
+// con un solo pulsante OK. Risolve quando l'utente chiude.
+export function alertError(msg, title = 'Errore') {
+  return modal((box, done) => {
+    const t = document.createElement('div');
+    t.textContent = title;
+    Object.assign(t.style, { fontSize: '14px', fontWeight: 600 });
+    const l = document.createElement('div');
+    l.textContent = msg;
+    Object.assign(l.style, { fontSize: '14px', color: '#333' });
+    const row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end' });
+    const ok = btn('OK', true);
+    ok.onclick = () => done();
+    ok.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === 'Escape') done(); });
+    row.append(ok);
+    box.append(t, l, row);
+    setTimeout(() => ok.focus(), 0);
+  });
+}
+
 // Conferma sì/no (sostituisce confirm()). Risolve true/false.
 export function askConfirm(msg, okLabel = 'OK', cancelLabel = 'Annulla') {
   return modal((box, done) => {
