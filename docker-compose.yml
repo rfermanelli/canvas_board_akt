@@ -40,28 +40,9 @@ services:
     restart: unless-stopped
     depends_on:
       - server
-    # Nessuna porta pubblicata: l'accesso pubblico passa da Caddy (servizio "caddy").
-    # Per un test in HTTP diretto puoi ripristinare: ports: ["8080:80"].
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      - web
     ports:
-      - "80:80"        # HTTP: redirect a HTTPS + validazione ACME di Let's Encrypt.
-      - "443:443"      # HTTPS.
-      - "443:443/udp"  # HTTP/3 (QUIC).
-    environment:
-      DOMAIN: ${DOMAIN}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data      # certificati e chiavi: NON perderli tra i restart.
-      - caddy_config:/config
+      - "8080:80"   # HTTP. Per HTTPS in produzione: terminare TLS qui o davanti (es. Traefik/certbot).
 
 volumes:
   db_data:
   media_data:
-  caddy_data:
-  caddy_config:
