@@ -9,7 +9,7 @@ import { toast, askText, askConfirm } from '../ui.js';
 import {
   MousePointer2, Hand, Pen, Highlighter, Eraser, Shapes, Type, StickyNote, Plus,
   Menu, Save, Download, Undo2, Redo2, Check, Layers, ArrowLeft, Users, Clapperboard,
-  Timer, Pause, Image as ImageIcon, Video, Upload, Minus, HelpCircle, X, ArrowUp,
+  Image as ImageIcon, Video, Upload, Minus, HelpCircle, X, ArrowUp,
   ArrowDown, Pencil, Play, Copy, CopyPlus, Trash2, ClipboardPaste, Link as LinkIcon,
   List, ChevronDown, ChevronLeft, ChevronRight, Square, Circle as CircleIcon,
   Triangle, Diamond, Pentagon, Hexagon, Star as StarIcon, ArrowRight, Slash, Presentation, Move, Spline, Smile,
@@ -323,8 +323,6 @@ export default function Board() {
   const [inlineEdit, setInlineEdit] = useState(null); // id nota in editing inline sul canvas
   const [inlineText, setInlineText] = useState('');   // testo corrente della nota in editing
   const [ctxMenu, setCtxMenu] = useState(null); // menu contestuale (tasto destro): {x,y,objId}
-  const [timer, setTimer] = useState(180);        // timer stile FigJam (secondi)
-  const [timerOn, setTimerOn] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // Toolbar trascinabile: pos {x,y} in px-schermo (null = default basso-centro), orient 'h'|'v'. Persistita in localStorage.
@@ -965,14 +963,6 @@ export default function Board() {
   // così resta evidenziato solo il menu aperto (niente doppia selezione).
   const openBarMenu = (m) => { setToolPop(null); setConnectFrom(null); toggleMenu(m); };
 
-  // Timer stile FigJam.
-  useEffect(() => {
-    if (!timerOn) return;
-    const t = setInterval(() => setTimer((s) => (s <= 1 ? (clearInterval(t), setTimerOn(false), 0) : s - 1)), 1000);
-    return () => clearInterval(t);
-  }, [timerOn]);
-  const mmss = `${String(Math.floor(timer / 60)).padStart(2, '0')}:${String(timer % 60).padStart(2, '0')}`;
-
   // Zoom con i pulsanti +/- (attorno al centro del viewport).
   function zoomBy(f) {
     setView((v) => {
@@ -1507,7 +1497,7 @@ export default function Board() {
           </div>
 
           {/* Cluster in alto a destra: intestazione "Canvas Board AKT" sopra la barra
-              (presenza, colore, livelli, scene, timer, Share). */}
+              (presenza, colore, livelli, scene, Share). */}
           <div style={t.trStack}>
             <div style={{ ...t.brand, display: 'flex', alignItems: 'center', gap: 6 }}>
               Canvas Board
@@ -1540,7 +1530,6 @@ export default function Board() {
             )}
             <button style={t.iconBtn} title="Livelli" onClick={() => setShowLayers((s) => !s)}><Layers size={16} /></button>
             <button style={{ ...t.iconBtn, ...(showScenes ? t.iconOn : {}) }} title="Scene / presentazione" onClick={() => { setShowCollabs(false); setShowScenes((s) => !s); }}><Clapperboard size={16} /></button>
-            <button style={t.timer} title="Timer" onClick={() => setTimerOn((o) => !o)}>{timerOn ? <Pause size={15} style={{ verticalAlign: '-2px' }} /> : <Timer size={15} style={{ verticalAlign: '-2px' }} />} {mmss}</button>
             <button style={t.barBtn} onClick={newBoard}>Nuova lavagna</button>
             <button style={{ ...t.barBtn, color: '#e03131' }} onClick={logout}>Esci</button>
             </div>
@@ -1838,7 +1827,6 @@ const t = {
   logo: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: '#7048e8', color: '#fff', fontSize: 13 },
   free: { fontSize: 11, color: '#7048e8', fontWeight: 600 },
   iconBtn: { width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 15 },
-  timer: { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13, padding: '5px 8px', fontVariantNumeric: 'tabular-nums' },
   share: { border: 'none', borderRadius: 10, background: 'linear-gradient(135deg,#7048e8,#9775fa)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '7px 16px', boxShadow: '0 4px 12px rgba(112,72,232,.35)' },
   barBtn: { border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', color: '#333', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '7px 12px', whiteSpace: 'nowrap' },
   swatches: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, padding: 4 },
