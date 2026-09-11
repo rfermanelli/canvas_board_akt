@@ -1,21 +1,7 @@
-// Pop-up interni all'app (toast + modali) al posto di alert()/prompt()/confirm()
-// nativi: così i messaggi NON mostrano il prefisso d'origine "localhost:8080 dice:".
+// Pop-up modali interni all'app al posto di alert()/prompt()/confirm() nativi:
+// così i messaggi NON mostrano il prefisso d'origine "localhost:8080 dice:".
 
 const FONT = 'system-ui, sans-serif';
-
-// Messaggio transitorio (sostituisce alert()).
-export function toast(msg, ms = 2600) {
-  const el = document.createElement('div');
-  el.textContent = msg;
-  Object.assign(el.style, {
-    position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
-    background: '#222', color: '#fff', padding: '10px 16px', borderRadius: '8px',
-    fontFamily: FONT, fontSize: '14px', zIndex: 10000, boxShadow: '0 4px 20px rgba(0,0,0,.25)',
-    maxWidth: '80vw',
-  });
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), ms);
-}
 
 // Overlay modale generico; `build(box, done)` riempie il contenuto.
 function modal(build) {
@@ -134,6 +120,24 @@ export function alertError(msg, title = 'Errore') {
     ok.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === 'Escape') done(); });
     row.append(ok);
     box.append(t, l, row);
+    setTimeout(() => ok.focus(), 0);
+  });
+}
+
+// Avviso informativo: stessa modale, solo messaggio + OK (senza titolo "Errore").
+// Per notifiche non di errore (es. "Snapshot salvato", "La lavagna è già vuota").
+export function alertInfo(msg) {
+  return modal((box, done) => {
+    const l = document.createElement('div');
+    l.textContent = msg;
+    Object.assign(l.style, { fontSize: '14px', color: '#333' });
+    const row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end' });
+    const ok = btn('OK', true);
+    ok.onclick = () => done();
+    ok.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === 'Escape') done(); });
+    row.append(ok);
+    box.append(l, row);
     setTimeout(() => ok.focus(), 0);
   });
 }

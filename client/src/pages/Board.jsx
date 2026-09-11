@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { api, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { toast, askText, askConfirm, alertError } from '../ui.js';
+import { askText, askConfirm, alertError, alertInfo } from '../ui.js';
 import {
   MousePointer2, Hand, Pen, Highlighter, Eraser, Shapes, Type, StickyNote, Plus,
   Menu, Save, Download, Undo2, Redo2, Check, Layers, ArrowLeft, Users, Clapperboard,
@@ -482,7 +482,7 @@ export default function Board() {
   async function clearAll() {
     setOpenMenu(null);
     if (!canEdit) return;
-    if (!objects.length) { toast('La lavagna è già vuota'); return; }
+    if (!objects.length) { alertInfo('La lavagna è già vuota'); return; }
     if (!(await askConfirm(`Cancellare tutti gli oggetti della lavagna (${objects.length})? Puoi annullare con Ctrl+Z.`, 'Cancella tutto', 'Annulla'))) return;
     newStep(); delObjs(objects.map((o) => o.id)); setSelectedIds([]);
   }
@@ -551,7 +551,7 @@ export default function Board() {
     trRef.current?.getLayer()?.batchDraw();
   }, [selectedIds, objects]);
 
-  async function save() { await api.put(`/boards/${id}`, { doc: { version: 1, objects } }); toast('Snapshot salvato'); }
+  async function save() { await api.put(`/boards/${id}`, { doc: { version: 1, objects } }); alertInfo('Snapshot salvato'); }
   // Crea una nuova lavagna e vi naviga (disponibile anche dall'interno di una lavagna).
   async function newBoard() {
     const name = await askText('Nome della nuova lavagna:', 'Senza titolo');
@@ -563,7 +563,7 @@ export default function Board() {
   // ⑨ Export dell'INTERO canvas (non solo la porzione visibile): attiva `exporting`
   // (che rende i link dei video/PDF e nasconde transformer/frame), poi un effetto cattura.
   function exportPNG() {
-    if (!objects.some((o) => o.type !== 'frame')) { toast('Niente da esportare'); return; }
+    if (!objects.some((o) => o.type !== 'frame')) { alertInfo('Niente da esportare'); return; }
     setSelectedIds([]);
     setExporting(true);
   }
@@ -978,7 +978,7 @@ export default function Board() {
     const email = await askText('Email della persona con cui condividere:');
     if (!email) return;
     const r = (await askConfirm('Che permesso vuoi assegnare?', 'Editor', 'Viewer')) ? 'editor' : 'viewer';
-    try { await api.post(`/boards/${id}/share`, { email, role: r }); toast('Lavagna condivisa!'); loadCollabs(); }
+    try { await api.post(`/boards/${id}/share`, { email, role: r }); alertInfo('Lavagna condivisa!'); loadCollabs(); }
     catch (e) { alertError(e.message); } // es. "Utente non trovato" (email non registrata)
   }
   async function loadCollabs() {
@@ -1004,7 +1004,7 @@ export default function Board() {
   function addSceneFromSelection() {
     const sel = objects.filter((o) => selectedIds.includes(o.id) && o.type !== 'frame');
     const b = unionBBox(sel);
-    if (!b) { toast('Seleziona prima una o più parti della lavagna'); return; }
+    if (!b) { alertInfo('Seleziona prima una o più parti della lavagna'); return; }
     const pad = 24;
     addObject({ id: uid(), type: 'frame', x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2, order: maxOrder + 1, name: `Scena ${frames.length + 1}`, rotation: 0 });
   }
@@ -1050,7 +1050,7 @@ export default function Board() {
   }
   const jumpToFrame = (f) => fitView({ x: f.x, y: f.y, width: f.width, height: f.height }, 60, presenting ? 120 : 0);
   function startPresent() {
-    if (!frames.length) { toast('Crea almeno una scena da una selezione'); return; }
+    if (!frames.length) { alertInfo('Crea almeno una scena da una selezione'); return; }
     viewBeforePresent.current = view; // memorizza la vista per ripristinarla all'uscita
     setSelectedIds([]); setShowScenes(false); setShowCollabs(false); setPresentIdx(0); setPresenting(true);
   }
@@ -1073,7 +1073,7 @@ export default function Board() {
     return () => window.removeEventListener('keydown', onKey);
   }, [presenting, frames.length]);
 
-  const help = () => toast('Scorciatoie: Canc elimina · Ctrl+Z annulla · Ctrl+Shift+Z ripristina · Ctrl+D duplica · rotellina zoom');
+  const help = () => alertInfo('Scorciatoie: Canc elimina · Ctrl+Z annulla · Ctrl+Shift+Z ripristina · Ctrl+D duplica · rotellina zoom');
 
   // Nota selezionata singolarmente -> barra di formattazione flottante (modello nota.png).
   const selNote = selectedIds.length === 1 ? objects.find((o) => o.id === selectedIds[0] && o.type === 'sticky') : null;
