@@ -155,6 +155,14 @@ boardsRouter.get('/:id/collaborators', asyncHandler(requireBoardRole('viewer')),
   res.json(rows);
 }));
 
+// GET /api/boards/:id/user-exists?email=...  (solo owner) -> { exists }
+// Usato dal flusso di condivisione per proporre la scelta del ruolo solo se
+// l'email è già registrata. (Stessa info già ottenibile dal 404 di /share.)
+boardsRouter.get('/:id/user-exists', asyncHandler(requireBoardRole('owner')), asyncHandler(async (req, res) => {
+  const users = await query('SELECT 1 FROM users WHERE email = ?', [req.query.email || '']);
+  res.json({ exists: users.length > 0 });
+}));
+
 // POST /api/boards/:id/share  { email, role }  (solo owner)
 boardsRouter.post('/:id/share', asyncHandler(requireBoardRole('owner')), asyncHandler(async (req, res) => {
   const { email, role } = req.body || {};

@@ -34,6 +34,11 @@ export default function Dashboard() {
   async function share(b) {
     const email = await askText('Email della persona con cui condividere:');
     if (!email) return;
+    // Propone la scelta dei permessi solo se l'email è già registrata.
+    let exists;
+    try { ({ exists } = await api.get(`/boards/${b.id}/user-exists?email=${encodeURIComponent(email)}`)); }
+    catch (e) { alertError(e.message); return; }
+    if (!exists) { alertError('Utente non trovato'); return; }
     const role = (await askConfirm('Che permesso vuoi assegnare?', 'Editor', 'Viewer')) ? 'editor' : 'viewer';
     try { await api.post(`/boards/${b.id}/share`, { email, role }); alertInfo('Lavagna condivisa!'); }
     catch (e) { alertError(e.message); }

@@ -977,9 +977,14 @@ export default function Board() {
   async function share() {
     const email = await askText('Email della persona con cui condividere:');
     if (!email) return;
+    // Propone la scelta dei permessi solo se l'email è già registrata.
+    let exists;
+    try { ({ exists } = await api.get(`/boards/${id}/user-exists?email=${encodeURIComponent(email)}`)); }
+    catch (e) { alertError(e.message); return; }
+    if (!exists) { alertError('Utente non trovato'); return; }
     const r = (await askConfirm('Che permesso vuoi assegnare?', 'Editor', 'Viewer')) ? 'editor' : 'viewer';
     try { await api.post(`/boards/${id}/share`, { email, role: r }); alertInfo('Lavagna condivisa!'); loadCollabs(); }
-    catch (e) { alertError(e.message); } // es. "Utente non trovato" (email non registrata)
+    catch (e) { alertError(e.message); }
   }
   async function loadCollabs() {
     try { setCollabs(await api.get(`/boards/${id}/collaborators`)); }
