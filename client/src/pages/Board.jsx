@@ -122,6 +122,8 @@ const SHAPE_CATS = [
   { cat: 'Frecce e linee', items: [
     { tool: 'arrow', label: 'Freccia', icon: ArrowRight },
     { tool: 'straight', label: 'Linea', icon: Slash },
+    { tool: 'arrowcurve', label: 'Freccia curva', icon: Spline },
+    { tool: 'linecurve', label: 'Linea curva', icon: Spline },
   ] },
 ];
 const POLY_SIDES = { triangle: 3, diamond: 4, pentagon: 5, hexagon: 6, heptagon: 7, octagon: 8 };
@@ -143,7 +145,7 @@ function makeShape(toolKind, pos, color) {
   if (toolKind === 'trapezoid') return cpoly([pos.x + 30, pos.y, pos.x + 110, pos.y, pos.x + 140, pos.y + 80, pos.x, pos.y + 80]);
   return null;
 }
-const SHAPE_TOOLS = ['rect', 'roundrect', 'ellipse', 'triangle', 'righttriangle', 'diamond', 'parallelogram', 'trapezoid', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'star', 'arrow', 'straight'];
+const SHAPE_TOOLS = ['rect', 'roundrect', 'ellipse', 'triangle', 'righttriangle', 'diamond', 'parallelogram', 'trapezoid', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'star', 'arrow', 'straight', 'arrowcurve', 'linecurve'];
 // Colore testo leggibile sopra uno sfondo esadecimale (per le sticky note).
 const readable = (hex) => {
   const c = hex?.replace('#', '') || 'ffd43b';
@@ -680,9 +682,16 @@ export default function Board() {
     const pos = pointerPos();
     // Timbro emoji/reazione: crea un oggetto testo con l'emoji (lo strumento resta attivo).
     if (tool === 'stamp') { addObject({ id: uid(), type: 'text', x: pos.x, y: pos.y, text: stampEmoji, fontSize: 46, fill: '#212529', fontFamily: FONT, rotation: 0 }); return; }
-    // Freccia/linea: si disegnano trascinando dal punto iniziale a quello finale (come Office).
-    if (tool === 'arrow' || tool === 'straight') {
-      setLineDraft({ id: uid(), type: tool, x: 0, y: 0, points: [pos.x, pos.y, pos.x, pos.y], stroke: color, strokeWidth: 4, heads: tool === 'arrow' ? 'end' : 'none', rotation: 0 });
+    // Freccia/linea: le dritte si disegnano trascinando dal punto iniziale al finale (stile Office);
+    // le varianti "curva" seguono l'intero percorso del puntatore sul canvas.
+    if (tool === 'arrow' || tool === 'straight' || tool === 'arrowcurve' || tool === 'linecurve') {
+      const curved = tool === 'arrowcurve' || tool === 'linecurve';
+      const headed = tool === 'arrow' || tool === 'arrowcurve';
+      setLineDraft({
+        id: uid(), type: headed ? 'arrow' : 'straight', x: 0, y: 0,
+        points: curved ? [pos.x, pos.y] : [pos.x, pos.y, pos.x, pos.y],
+        stroke: color, strokeWidth: 4, heads: headed ? 'end' : 'none', curved, rotation: 0,
+      });
       return;
     }
     if (SHAPE_TOOLS.includes(tool)) { const s = makeShape(tool, pos, color); if (s) addObject(s); }
@@ -712,7 +721,12 @@ export default function Board() {
     // Cursore condiviso (effimero).
     if (awareness.current) { const p = pointerPos(); awareness.current.setLocalStateField('cursor', p); }
     if ((tool === 'pen' || tool === 'highlighter') && draft) setDraft((d) => ({ ...d, points: d.points.concat([pointerPos().x, pointerPos().y]) }));
-    if (lineDraft) { const p = pointerPos(); setLineDraft((d) => ({ ...d, points: [d.points[0], d.points[1], p.x, p.y] })); }
+    if (lineDraft) {
+      const p = pointerPos();
+      setLineDraft((d) => d.curved
+        ? { ...d, points: d.points.concat([p.x, p.y]) }              // curva: accumula il percorso
+        : { ...d, points: [d.points[0], d.points[1], p.x, p.y] });   // dritta: sposta solo il punto finale
+    }
     if (tool === 'eraser') { const p = pointerPos(); setEraserPos(p); if (erasing.current) eraseAtPoint(p); }
     if (marqueeRef.current) { const p = pointerPos(); const s = marqueeRef.current; setMarqueeBox({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) }); }
   }
@@ -722,9 +736,13 @@ export default function Board() {
     if ((tool === 'pen' || tool === 'highlighter') && draft) { setObj(draft); setDraft(null); } // lo strumento resta attivo
     // Fine disegno freccia/linea: se il trascinamento è quasi nullo (clic secco) uso un segmento di default.
     if (lineDraft) {
-      const [x1, y1, x2, y2] = lineDraft.points;
-      const final = Math.hypot(x2 - x1, y2 - y1) < 6 ? { ...lineDraft, points: [x1, y1, x1 + 140, y1] } : lineDraft;
-      addObject(final);
+      if (lineDraft.curved) {
+        if (lineDraft.points.length >= 4) addObject(lineDraft); // servono almeno 2 punti, altrimenti scarto
+      } else {
+        const [x1, y1, x2, y2] = lineDraft.points;
+        const final = Math.hypot(x2 - x1, y2 - y1) < 6 ? { ...lineDraft, points: [x1, y1, x1 + 140, y1] } : lineDraft;
+        addObject(final);
+      }
       setLineDraft(null);
     }
     // Fine selezione ad area: seleziona gli oggetti che intersecano il rettangolo (clic secco = deseleziona).
@@ -1108,8 +1126,10 @@ export default function Board() {
 
   // Barra della punta per freccia/linea selezionata: nessuna / a un estremo / a entrambi.
   function lineHeadBar(o, patch) {
-    const mx = o.x + (o.points[0] + o.points[2]) / 2;
-    const my = o.y + (o.points[1] + o.points[3]) / 2;
+    // Punto medio della corda (primo-ultimo punto): vale sia per le dritte sia per le curve.
+    const lx = o.points[o.points.length - 2], ly = o.points[o.points.length - 1];
+    const mx = o.x + (o.points[0] + lx) / 2;
+    const my = o.y + (o.points[1] + ly) / 2;
     const p = toScreen(mx, my);
     const cur = o.heads || (o.type === 'arrow' ? 'end' : 'none');
     const opt = (val, label, title) => (
@@ -1340,7 +1360,8 @@ export default function Board() {
                   // La punta segue `heads` (nessuna/un estremo/entrambi), non più il tipo:
                   // così una linea può diventare freccia e viceversa. Default retro-compatibile.
                   const heads = o.heads || (o.type === 'arrow' ? 'end' : 'none');
-                  const common = { key: o.id, ref: setRef(o.id), ...nodeProps(o), x: o.x, y: o.y, points: o.points, stroke: o.stroke, strokeWidth: o.strokeWidth, rotation: o.rotation, hitStrokeWidth: Math.max(o.strokeWidth || 4, 12) };
+                  const tension = o.points.length > 4 ? 0.4 : 0; // molti punti (a mano libera) -> curva morbida
+                  const common = { key: o.id, ref: setRef(o.id), ...nodeProps(o), x: o.x, y: o.y, points: o.points, stroke: o.stroke, strokeWidth: o.strokeWidth, rotation: o.rotation, hitStrokeWidth: Math.max(o.strokeWidth || 4, 12), tension, lineJoin: 'round' };
                   if (heads === 'none') return <Line {...common} lineCap="round" />;
                   return <Arrow {...common} fill={o.stroke} pointerLength={12} pointerWidth={12} pointerAtBeginning={heads === 'both'} pointerAtEnding />;
                 }
@@ -1382,8 +1403,8 @@ export default function Board() {
               })}
               {draft && <Line points={draft.points} stroke={draft.stroke} strokeWidth={draft.strokeWidth} opacity={draft.opacity ?? 1} lineCap="round" lineJoin="round" tension={0.3} />}
               {lineDraft && (lineDraft.heads === 'none'
-                ? <Line points={lineDraft.points} stroke={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} lineCap="round" />
-                : <Arrow points={lineDraft.points} stroke={lineDraft.stroke} fill={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} pointerLength={12} pointerWidth={12} pointerAtBeginning={lineDraft.heads === 'both'} pointerAtEnding />)}
+                ? <Line points={lineDraft.points} stroke={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} lineCap="round" lineJoin="round" tension={lineDraft.curved ? 0.4 : 0} />
+                : <Arrow points={lineDraft.points} stroke={lineDraft.stroke} fill={lineDraft.stroke} strokeWidth={lineDraft.strokeWidth} pointerLength={12} pointerWidth={12} pointerAtBeginning={lineDraft.heads === 'both'} pointerAtEnding lineJoin="round" tension={lineDraft.curved ? 0.4 : 0} />)}
               {marqueeBox && (marqueeBox.w > 0 || marqueeBox.h > 0) && <Rect x={marqueeBox.x} y={marqueeBox.y} width={marqueeBox.w} height={marqueeBox.h} fill="rgba(76,110,245,0.10)" stroke="#4c6ef5" strokeWidth={1 / view.scale} dash={[5 / view.scale, 4 / view.scale]} listening={false} />}
               {tool === 'eraser' && eraserPos && <Circle x={eraserPos.x} y={eraserPos.y} radius={eraserWidth / view.scale}
                 stroke="#e03131" strokeWidth={1 / view.scale} dash={[4 / view.scale, 4 / view.scale]} fill="rgba(224,49,49,0.08)" listening={false} />}
