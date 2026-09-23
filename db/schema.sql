@@ -59,3 +59,18 @@ CREATE TABLE IF NOT EXISTS media_assets (
   CONSTRAINT fk_media_uploader FOREIGN KEY (uploader_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_media_board    FOREIGN KEY (board_id)    REFERENCES boards (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Token per il recupero password ("Password dimenticata?"). In DB si salva solo
+-- l'hash SHA-256 del token; il token in chiaro vive solo nel link via email.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id     BIGINT UNSIGNED NOT NULL,
+  token_hash  CHAR(64) NOT NULL,
+  expires_at  DATETIME NOT NULL,
+  used_at     DATETIME NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_prt_token (token_hash),
+  KEY idx_prt_user (user_id),
+  CONSTRAINT fk_prt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -17,4 +17,14 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpires: process.env.JWT_EXPIRES || '7d',
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 25),
+  appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:8080',
+  resetTokenTtlMin: Number(process.env.RESET_TOKEN_TTL_MIN || 60),
+  smtp: {
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    from: process.env.MAIL_FROM || 'no-reply@canvasboard.local',
+    secure: process.env.SMTP_SECURE === 'true',
+  },
 };

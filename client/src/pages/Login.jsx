@@ -28,6 +28,7 @@ export default function Login() {
         <input style={styles.input} type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         {err && <p style={styles.err}>{err}</p>}
         <button style={styles.btn} type="submit">Entra</button>
+        <p style={styles.muted}><Link to="/forgot-password">Password dimenticata?</Link></p>
         <p style={styles.muted}>Non hai un account? <Link to="/register">Registrati</Link></p>
       </form>
     </div>

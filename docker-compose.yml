@@ -32,6 +32,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES: ${JWT_EXPIRES}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      RESET_TOKEN_TTL_MIN: ${RESET_TOKEN_TTL_MIN:-60}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@canvasboard.local}
     volumes:
       - media_data:/app/uploads
 
