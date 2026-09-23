@@ -50,6 +50,7 @@ export default function Dashboard() {
         <strong>Le mie lavagne</strong>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={s.muted}>{user?.email}</span>
+          <button style={s.ghost} onClick={() => nav('/profile')}>Profilo</button>
           <button style={s.primary} onClick={create}><Plus size={15} style={{ verticalAlign: '-3px' }} /> Nuova</button>
           <button style={s.ghost} onClick={logout}>Esci</button>
         </div>

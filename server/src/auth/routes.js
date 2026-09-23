@@ -54,4 +54,21 @@ authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   res.json({ id: rows[0].id, email: rows[0].email, displayName: rows[0].display_name });
 }));
 
+// PUT /api/auth/password  { currentPassword, newPassword }
+authRouter.put('/password', requireAuth, asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Password attuale e nuova richieste' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'Password troppo corta (min 8)' });
+
+  const rows = await query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
+
+  const ok = await bcrypt.compare(currentPassword, rows[0].password_hash);
+  if (!ok) return res.status(401).json({ error: 'Password attuale non corretta' });
+
+  const hash = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+  res.json({ ok: true });
+}));
+
 // TODO (Fase 6, opzionale): login con Google (OAuth). Punto d'innesto qui.
