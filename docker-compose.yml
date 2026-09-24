@@ -39,7 +39,7 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@canvasboard.local}
+      MAIL_FROM: ${MAIL_FROM:-noreply@aktsrl.com}
     volumes:
       - media_data:/app/uploads
 

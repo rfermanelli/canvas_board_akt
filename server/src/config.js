@@ -24,7 +24,7 @@ export const config = {
     port: Number(process.env.SMTP_PORT || 587),
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
-    from: process.env.MAIL_FROM || 'no-reply@canvasboard.local',
+    from: process.env.MAIL_FROM || 'noreply@aktsrl.com',
     secure: process.env.SMTP_SECURE === 'true',
   },
 };
