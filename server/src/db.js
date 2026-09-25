@@ -28,6 +28,31 @@ export async function ensureSchema() {
     "ALTER TABLE media_assets MODIFY kind ENUM('image','video','pdf','pptx') NOT NULL"
   ).catch((e) => console.error('ensureSchema:', e.message));
 
+  // Ruolo globale + soft-disable sugli utenti (DB già esistenti). MySQL 8 non supporta
+  // ADD COLUMN IF NOT EXISTS: eseguo l'ALTER e ignoro l'errore "Duplicate column" se già presente.
+  await pool.query(
+    "ALTER TABLE users ADD COLUMN role ENUM('user','admin') NOT NULL DEFAULT 'user'"
+  ).catch((e) => { if (!/Duplicate column/i.test(e.message)) console.error('ensureSchema:', e.message); });
+  await pool.query(
+    'ALTER TABLE users ADD COLUMN disabled_at DATETIME NULL'
+  ).catch((e) => { if (!/Duplicate column/i.test(e.message)) console.error('ensureSchema:', e.message); });
+
+  // Log delle azioni amministrative.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      admin_id    BIGINT UNSIGNED NULL,
+      action      VARCHAR(64) NOT NULL,
+      entity_type VARCHAR(32) NOT NULL,
+      entity_id   BIGINT UNSIGNED NULL,
+      details     JSON NULL,
+      created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_audit_created (created_at),
+      CONSTRAINT fk_audit_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `).catch((e) => console.error('ensureSchema:', e.message));
+
   // Tabella dei token per il recupero password (DB già esistenti senza schema.sql aggiornato).
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (

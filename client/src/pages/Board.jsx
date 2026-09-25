@@ -348,7 +348,7 @@ export default function Board() {
   const canEdit = role === 'owner' || role === 'editor';
 
   // Persistenza posizione/orientamento della toolbar.
-  useEffect(() => { try { localStorage.setItem('cb.toolbar', JSON.stringify(toolbar)); } catch {} }, [toolbar]);
+  useEffect(() => { try { localStorage.setItem('cb.toolbar', JSON.stringify(toolbar)); } catch { /* localStorage non disponibile: ignora */ } }, [toolbar]);
 
   // Anti-sparizione: al mount, al resize e quando la barra ricompare/cambia orientamento,
   // ri-clampa una `pos` salvata dentro i limiti correnti del parent (stesse semantiche del drag).
@@ -1361,9 +1361,9 @@ export default function Board() {
                   // così una linea può diventare freccia e viceversa. Default retro-compatibile.
                   const heads = o.heads || (o.type === 'arrow' ? 'end' : 'none');
                   const tension = o.points.length > 4 ? 0.4 : 0; // molti punti (a mano libera) -> curva morbida
-                  const common = { key: o.id, ref: setRef(o.id), ...nodeProps(o), x: o.x, y: o.y, points: o.points, stroke: o.stroke, strokeWidth: o.strokeWidth, rotation: o.rotation, hitStrokeWidth: Math.max(o.strokeWidth || 4, 12), tension, lineJoin: 'round' };
-                  if (heads === 'none') return <Line {...common} lineCap="round" />;
-                  return <Arrow {...common} fill={o.stroke} pointerLength={12} pointerWidth={12} pointerAtBeginning={heads === 'both'} pointerAtEnding />;
+                  const common = { ref: setRef(o.id), ...nodeProps(o), x: o.x, y: o.y, points: o.points, stroke: o.stroke, strokeWidth: o.strokeWidth, rotation: o.rotation, hitStrokeWidth: Math.max(o.strokeWidth || 4, 12), tension, lineJoin: 'round' };
+                  if (heads === 'none') return <Line key={o.id} {...common} lineCap="round" />;
+                  return <Arrow key={o.id} {...common} fill={o.stroke} pointerLength={12} pointerWidth={12} pointerAtBeginning={heads === 'both'} pointerAtEnding />;
                 }
                 // Tratti a mano libera: selezionabili/cancellabili (clic con generoso
                 // hitStrokeWidth + evidenziazione se selezionati). La gomma parziale resta

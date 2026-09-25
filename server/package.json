@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,5 +20,10 @@
     "ws": "^8.18.0",
     "y-websocket": "^1.5.4",
     "yjs": "^13.6.18"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0"
   }
 }

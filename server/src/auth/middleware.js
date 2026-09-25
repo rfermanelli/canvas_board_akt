@@ -3,17 +3,37 @@ import { config } from '../config.js';
 import { query } from '../db.js';
 
 // Verifica il JWT (header "Authorization: Bearer <token>") e popola req.user.
-export function requireAuth(req, res, next) {
+// Rilegge l'utente dal DB a ogni richiesta (una query per PK) per: (a) avere il
+// ruolo aggiornato senza fidarsi del token, (b) bloccare SUBITO gli account
+// disattivati anche con un JWT ancora valido.
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Token mancante' });
+  let payload;
   try {
-    const payload = jwt.verify(token, config.jwtSecret);
-    req.user = { id: payload.sub, email: payload.email };
-    next();
+    payload = jwt.verify(token, config.jwtSecret);
   } catch {
     return res.status(401).json({ error: 'Token non valido' });
   }
+  try {
+    const rows = await query('SELECT id, email, role, disabled_at FROM users WHERE id = ?', [payload.sub]);
+    if (!rows.length) return res.status(401).json({ error: 'Utente non trovato' });
+    if (rows[0].disabled_at) return res.status(403).json({ error: 'Account disattivato' });
+    req.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+// Richiede che l'utente autenticato sia un amministratore globale.
+// Da usare SEMPRE dopo requireAuth (che popola req.user.role dal DB).
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Accesso riservato agli amministratori' });
+  }
+  next();
 }
 
 // Ritorna il ruolo dell'utente su una board ('owner'|'editor'|'viewer') o null.

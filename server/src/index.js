@@ -7,6 +7,7 @@ import { ensureSchema } from './db.js';
 import { authRouter } from './auth/routes.js';
 import { boardsRouter } from './boards/routes.js';
 import { mediaRouter } from './media/routes.js';
+import { adminRouter } from './admin/routes.js';
 import { initYjs } from './realtime/yjs.js';
 
 const app = express();
@@ -17,6 +18,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
 app.use('/api/boards', boardsRouter);
 app.use('/api/media', mediaRouter);
+app.use('/api/admin', adminRouter);
 
 // File media caricati (Fase 5: sostituibile con storage object-compatibile).
 app.use('/uploads', express.static(path.resolve('uploads'), {

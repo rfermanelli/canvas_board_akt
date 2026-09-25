@@ -38,7 +38,7 @@ authRouter.post('/register', asyncHandler(async (req, res) => {
     [email, hash, displayName || email.split('@')[0]]
   );
   const user = { id: result.insertId, email };
-  res.status(201).json({ token: signToken(user), user: { id: user.id, email, displayName } });
+  res.status(201).json({ token: signToken(user), user: { id: user.id, email, displayName, role: 'user' } });
 }));
 
 // POST /api/auth/login  { email, password }
@@ -46,21 +46,23 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email e password richieste' });
 
-  const rows = await query('SELECT id, email, password_hash, display_name FROM users WHERE email = ?', [email]);
+  const rows = await query('SELECT id, email, password_hash, display_name, role, disabled_at FROM users WHERE email = ?', [email]);
   if (!rows.length) return res.status(401).json({ error: 'Credenziali non valide' });
 
   const ok = await bcrypt.compare(password, rows[0].password_hash);
   if (!ok) return res.status(401).json({ error: 'Credenziali non valide' });
 
+  if (rows[0].disabled_at) return res.status(403).json({ error: 'Account disattivato' });
+
   const user = { id: rows[0].id, email: rows[0].email };
-  res.json({ token: signToken(user), user: { id: user.id, email: user.email, displayName: rows[0].display_name } });
+  res.json({ token: signToken(user), user: { id: user.id, email: user.email, displayName: rows[0].display_name, role: rows[0].role } });
 }));
 
 // GET /api/auth/me
 authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  const rows = await query('SELECT id, email, display_name FROM users WHERE id = ?', [req.user.id]);
+  const rows = await query('SELECT id, email, display_name, role FROM users WHERE id = ?', [req.user.id]);
   if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
-  res.json({ id: rows[0].id, email: rows[0].email, displayName: rows[0].display_name });
+  res.json({ id: rows[0].id, email: rows[0].email, displayName: rows[0].display_name, role: rows[0].role });
 }));
 
 // PUT /api/auth/password  { currentPassword, newPassword }

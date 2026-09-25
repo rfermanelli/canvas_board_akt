@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
   email         VARCHAR(255) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   display_name  VARCHAR(120) NOT NULL,
+  role          ENUM('user','admin') NOT NULL DEFAULT 'user',
+  disabled_at   DATETIME NULL,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_users_email (email)
@@ -58,6 +60,21 @@ CREATE TABLE IF NOT EXISTS media_assets (
   KEY idx_media_board (board_id),
   CONSTRAINT fk_media_uploader FOREIGN KEY (uploader_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_media_board    FOREIGN KEY (board_id)    REFERENCES boards (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Log delle azioni amministrative (chi ha fatto cosa e quando). `admin_id` resta
+-- nel log anche se l'admin viene eliminato (ON DELETE SET NULL), per non perdere lo storico.
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  admin_id    BIGINT UNSIGNED NULL,
+  action      VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(32) NOT NULL,
+  entity_id   BIGINT UNSIGNED NULL,
+  details     JSON NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_audit_created (created_at),
+  CONSTRAINT fk_audit_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Token per il recupero password ("Password dimenticata?"). In DB si salva solo

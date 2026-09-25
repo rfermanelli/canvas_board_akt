@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { askText, askConfirm, alertError, alertInfo } from '../ui.js';
-import { Presentation, Plus } from 'lucide-react';
+import { Presentation, Plus, Shield } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -50,6 +50,9 @@ export default function Dashboard() {
         <strong>Le mie lavagne</strong>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span style={s.muted}>{user?.email}</span>
+          {user?.role === 'admin' && (
+            <button style={s.ghost} onClick={() => nav('/admin')}><Shield size={15} style={{ verticalAlign: '-3px' }} /> Admin</button>
+          )}
           <button style={s.ghost} onClick={() => nav('/profile')}>Profilo</button>
           <button style={s.primary} onClick={create}><Plus size={15} style={{ verticalAlign: '-3px' }} /> Nuova</button>
           <button style={s.ghost} onClick={logout}>Esci</button>
