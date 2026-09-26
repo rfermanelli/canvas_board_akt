@@ -290,6 +290,50 @@ adminRouter.delete('/boards/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// --- Media ---
+
+// GET /api/admin/media?page&pageSize&q&kind
+// Elenca tutti i media con la lavagna in cui si trovano (può essere NULL se la lavagna
+// è stata eliminata: media_assets.board_id ON DELETE SET NULL) e l'utente che li ha caricati.
+adminRouter.get('/media', asyncHandler(async (req, res) => {
+  const { page, pageSize, offset } = pagination(req);
+  const q = (req.query.q || '').trim();
+  const kind = req.query.kind;
+
+  const where = [];
+  const params = [];
+  if (q) {
+    where.push('(m.filename LIKE ? OR u.email LIKE ? OR b.name LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (['image', 'video', 'pdf', 'pptx'].includes(kind)) {
+    where.push('m.kind = ?');
+    params.push(kind);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const totalRows = await query(
+    `SELECT COUNT(*) AS total
+       FROM media_assets m
+       JOIN users u ON u.id = m.uploader_id
+       LEFT JOIN boards b ON b.id = m.board_id ${whereSql}`,
+    params
+  );
+  const rows = await query(
+    `SELECT m.id, m.kind, m.filename, m.mime, m.size_bytes, m.url, m.created_at,
+            m.board_id, b.name AS board_name,
+            m.uploader_id, u.email AS uploader_email, u.display_name AS uploader_name
+       FROM media_assets m
+       JOIN users u ON u.id = m.uploader_id
+       LEFT JOIN boards b ON b.id = m.board_id
+       ${whereSql}
+      ORDER BY m.created_at DESC
+      LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  res.json({ rows, total: totalRows[0].total, page, pageSize });
+}));
+
 // --- Audit log ---
 
 // GET /api/admin/audit-log?page&pageSize

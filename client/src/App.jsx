@@ -14,6 +14,7 @@ import AdminUsers from './pages/Admin/AdminUsers.jsx';
 import AdminPending from './pages/Admin/AdminPending.jsx';
 import AdminUserDetail from './pages/Admin/AdminUserDetail.jsx';
 import AdminBoards from './pages/Admin/AdminBoards.jsx';
+import AdminMedia from './pages/Admin/AdminMedia.jsx';
 import AdminAuditLog from './pages/Admin/AdminAuditLog.jsx';
 
 function Protected({ children }) {
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="users/:id" element={<AdminUserDetail />} />
         <Route path="boards" element={<AdminBoards />} />
+        <Route path="media" element={<AdminMedia />} />
         <Route path="audit-log" element={<AdminAuditLog />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -245,3 +245,34 @@ test('12. le azioni admin sono registrate nell audit log', async (t) => {
   assert.ok(actions.includes('user.role.change'), 'atteso log user.role.change');
   assert.ok(actions.includes('user.disable'), 'atteso log user.disable');
 });
+
+// --- Media ---
+
+test('13. la lista media mostra la lavagna e l utente proprietario', async (t) => {
+  if (skipIfUnreachable(t)) return;
+  const created = await apiReq('POST', '/boards', { token: userToken, body: { name: `MediaSuite Board ${stamp}` } });
+  assert.equal(created.status, 201);
+  const boardId = created.body.id;
+  const ins = await query(
+    'INSERT INTO media_assets (board_id, uploader_id, kind, filename, mime, size_bytes, url) VALUES (?,?,?,?,?,?,?)',
+    [boardId, userId, 'image', `mediatest_${stamp}.png`, 'image/png', 12345, `/uploads/mediatest_${stamp}.png`]
+  );
+  const mediaId = ins.insertId;
+
+  const list = await apiReq('GET', `/admin/media?q=mediatest_${stamp}`, { token: adminToken });
+  assert.equal(list.status, 200);
+  const found = list.body.rows.find((m) => m.id === mediaId);
+  assert.ok(found, 'il media creato deve comparire nella lista');
+  assert.equal(found.uploader_email, userEmail);
+  assert.equal(found.board_name, `MediaSuite Board ${stamp}`);
+  assert.equal(found.kind, 'image');
+
+  await query('DELETE FROM media_assets WHERE id = ?', [mediaId]);
+  await query('DELETE FROM boards WHERE id = ?', [boardId]);
+});
+
+test('14. un utente NON admin non può elencare i media (403)', async (t) => {
+  if (skipIfUnreachable(t)) return;
+  const r = await apiReq('GET', '/admin/media', { token: userToken });
+  assert.equal(r.status, 403);
+});

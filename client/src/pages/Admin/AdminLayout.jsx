@@ -8,6 +8,7 @@ const navItems = [
   { to: '/admin/pending', label: 'Approvazioni' },
   { to: '/admin/users', label: 'Utenti' },
   { to: '/admin/boards', label: 'Lavagne' },
+  { to: '/admin/media', label: 'Media' },
   { to: '/admin/audit-log', label: 'Log' },
 ];
 
