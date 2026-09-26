@@ -19,6 +19,16 @@ export const config = {
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 25),
   appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:8080',
   resetTokenTtlMin: Number(process.env.RESET_TOKEN_TTL_MIN || 60),
+  // Validità del link di verifica email, in minuti (default 24h).
+  emailVerificationTtlMin: Number(process.env.EMAIL_VERIFICATION_TTL_MIN || 1440),
+  rateLimit: {
+    // Tentativi di login per IP nella finestra indicata.
+    loginMax: Number(process.env.RATE_LIMIT_LOGIN_MAX || 10),
+    loginWindowMin: Number(process.env.RATE_LIMIT_LOGIN_WINDOW_MIN || 15),
+    // Richieste di reinvio email di verifica per indirizzo nella finestra indicata.
+    resendMax: Number(process.env.RATE_LIMIT_RESEND_MAX || 3),
+    resendWindowMin: Number(process.env.RATE_LIMIT_RESEND_WINDOW_MIN || 60),
+  },
   smtp: {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),

@@ -2,15 +2,22 @@
 -- Applicato automaticamente da MySQL al primo avvio (montato in /docker-entrypoint-initdb.d).
 
 CREATE TABLE IF NOT EXISTS users (
-  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  email         VARCHAR(255) NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  display_name  VARCHAR(120) NOT NULL,
-  role          ENUM('user','admin') NOT NULL DEFAULT 'user',
-  disabled_at   DATETIME NULL,
-  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email            VARCHAR(255) NOT NULL,
+  password_hash    VARCHAR(255) NOT NULL,
+  display_name     VARCHAR(120) NOT NULL,
+  role             ENUM('user','admin') NOT NULL DEFAULT 'user',
+  -- Ciclo di vita: registrazione -> verifica email -> approvazione admin -> attivo.
+  status           ENUM('pending_verification','pending_approval','active','rejected','suspended') NOT NULL DEFAULT 'pending_verification',
+  email_verified_at DATETIME NULL,
+  approved_at      DATETIME NULL,
+  approved_by      BIGINT UNSIGNED NULL,
+  rejection_reason VARCHAR(500) NULL,
+  disabled_at      DATETIME NULL,
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_users_email (email)
+  UNIQUE KEY uq_users_email (email),
+  CONSTRAINT fk_users_approved_by FOREIGN KEY (approved_by) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS boards (
@@ -90,4 +97,19 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   UNIQUE KEY uq_prt_token (token_hash),
   KEY idx_prt_user (user_id),
   CONSTRAINT fk_prt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Token per la verifica dell'email in registrazione. Come i token di reset, in DB
+-- si salva solo l'hash SHA-256; il token in chiaro vive solo nel link via email.
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id     BIGINT UNSIGNED NOT NULL,
+  token_hash  CHAR(64) NOT NULL,
+  expires_at  DATETIME NOT NULL,
+  used_at     DATETIME NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_evt_token (token_hash),
+  KEY idx_evt_user (user_id),
+  CONSTRAINT fk_evt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
