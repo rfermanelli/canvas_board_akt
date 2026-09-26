@@ -5,6 +5,7 @@ import { adminStyles as s } from './adminStyles.js';
 const METRICS = [
   { key: 'users_total', label: 'Utenti totali' },
   { key: 'users_last_7d', label: 'Nuovi ultimi 7 giorni' },
+  { key: 'users_pending_approval', label: 'In attesa di approvazione' },
   { key: 'users_disabled', label: 'Disattivati' },
   { key: 'admins_total', label: 'Amministratori' },
   { key: 'boards_total', label: 'Lavagne totali' },

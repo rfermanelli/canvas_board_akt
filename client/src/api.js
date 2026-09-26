@@ -24,7 +24,12 @@ async function request(method, path, body) {
     body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data.error || `Errore ${res.status}`);
+    err.code = data.code;        // es. stato account: 'pending_verification', 'suspended', ...
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 

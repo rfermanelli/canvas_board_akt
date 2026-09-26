@@ -30,6 +30,9 @@ export const adminStyles = {
   badgeUser: { background: '#f4f5f7', color: '#555' },
   badgeActive: { background: '#e6fcf5', color: '#0ca678' },
   badgeDisabled: { background: '#fff0f0', color: '#e03131' },
+  badgePending: { background: '#fff4e6', color: '#e8590c' },
+  badgeSuspended: { background: '#fff0f0', color: '#e03131' },
+  badgeRejected: { background: '#f4f5f7', color: '#868e96' },
 
   link: { background: 'none', border: 'none', color: '#4c6ef5', cursor: 'pointer', fontSize: 13, padding: 0, marginRight: 10, textDecoration: 'none' },
   linkDanger: { background: 'none', border: 'none', color: '#e03131', cursor: 'pointer', fontSize: 13, padding: 0, marginRight: 10, textDecoration: 'none' },

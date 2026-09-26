@@ -7,6 +7,15 @@ import { adminStyles as s } from './adminStyles.js';
 
 const PAGE_SIZE = 20;
 
+// Etichetta + stile del badge per lo stato del ciclo di vita dell'account.
+const STATUS_META = {
+  active: { label: 'Attivo', style: s.badgeActive },
+  pending_verification: { label: 'Verifica email', style: s.badgePending },
+  pending_approval: { label: 'Da approvare', style: s.badgePending },
+  suspended: { label: 'Sospeso', style: s.badgeSuspended },
+  rejected: { label: 'Rifiutato', style: s.badgeRejected },
+};
+
 export default function AdminUsers() {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
@@ -54,6 +63,11 @@ export default function AdminUsers() {
     }
     if (!(await askConfirm(`Disattivare l'account di "${row.email}"?`, 'Disattiva'))) return;
     try { await api.patch(`/admin/users/${row.id}/disable`); load(); }
+    catch (e) { alertError(e.message); }
+  }
+  async function suspend(row) {
+    if (!(await askConfirm(`Sospendere l'account di "${row.email}"? Non potrà più accedere.`, 'Sospendi'))) return;
+    try { await api.post(`/admin/users/${row.id}/suspend`); load(); }
     catch (e) { alertError(e.message); }
   }
 
@@ -112,9 +126,11 @@ export default function AdminUsers() {
                         </span>
                       </td>
                       <td style={s.td}>
-                        <span style={{ ...s.badge, ...(disabled ? s.badgeDisabled : s.badgeActive) }}>
-                          {disabled ? 'Disattivato' : 'Attivo'}
-                        </span>
+                        {(() => {
+                          const m = STATUS_META[row.status] || { label: row.status, style: s.badgeUser };
+                          return <span style={{ ...s.badge, ...m.style }}>{m.label}</span>;
+                        })()}
+                        {disabled && <span style={{ ...s.badge, ...s.badgeDisabled, marginLeft: 6 }}>Disattivato</span>}
                       </td>
                       <td style={s.td}>{row.boards_count}</td>
                       <td style={s.td}>{new Date(row.created_at).toLocaleDateString()}</td>
@@ -129,6 +145,9 @@ export default function AdminUsers() {
                           <button style={disabled ? s.link : s.linkDanger} onClick={() => toggleStatus(row)}>
                             {disabled ? 'Riattiva' : 'Disattiva'}
                           </button>
+                        )}
+                        {!isSelf && row.status === 'active' && (
+                          <button style={s.linkDanger} onClick={() => suspend(row)}>Sospendi</button>
                         )}
                         <Link style={s.link} to={`/admin/users/${row.id}`}>Dettaglio</Link>
                       </td>

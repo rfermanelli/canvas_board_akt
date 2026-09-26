@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', end: true },
+  { to: '/admin/pending', label: 'Approvazioni' },
   { to: '/admin/users', label: 'Utenti' },
   { to: '/admin/boards', label: 'Lavagne' },
   { to: '/admin/audit-log', label: 'Log' },
