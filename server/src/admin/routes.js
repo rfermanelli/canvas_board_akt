@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth/middleware.js';
 import { asyncHandler } from '../asyncHandler.js';
+import { assertTransition } from '../users/status.js';
+import { sendApprovalEmail, sendRejectionEmail, sendSuspensionEmail } from '../mail.js';
 
 // Tutte le rotte admin richiedono un utente autenticato E amministratore.
 // Il controllo è SEMPRE lato server (requisito): l'interfaccia si limita a nascondere.
@@ -41,6 +43,7 @@ adminRouter.get('/stats', asyncHandler(async (_req, res) => {
        (SELECT COUNT(*) FROM users) AS users_total,
        (SELECT COUNT(*) FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS users_last_7d,
        (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) AS users_disabled,
+       (SELECT COUNT(*) FROM users WHERE status = 'pending_approval') AS users_pending_approval,
        (SELECT COUNT(*) FROM users WHERE role = 'admin') AS admins_total,
        (SELECT COUNT(*) FROM boards) AS boards_total,
        (SELECT COUNT(*) FROM media_assets) AS media_total`
@@ -73,7 +76,7 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
 
   const totalRows = await query(`SELECT COUNT(*) AS total FROM users ${whereSql}`, params);
   const rows = await query(
-    `SELECT id, email, display_name, role, disabled_at, created_at,
+    `SELECT id, email, display_name, role, status, email_verified_at, approved_at, disabled_at, created_at,
             (SELECT COUNT(*) FROM boards b WHERE b.owner_id = users.id) AS boards_count
        FROM users ${whereSql}
       ORDER BY created_at DESC
@@ -83,12 +86,31 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
   res.json({ rows, total: totalRows[0].total, page, pageSize });
 }));
 
+// GET /api/admin/pending  -> utenti in attesa di approvazione (email verificata)
+adminRouter.get('/pending', asyncHandler(async (req, res) => {
+  const { page, pageSize, offset } = pagination(req);
+  const totalRows = await query("SELECT COUNT(*) AS total FROM users WHERE status = 'pending_approval'");
+  const rows = await query(
+    `SELECT id, email, display_name, role, status, email_verified_at, created_at
+       FROM users WHERE status = 'pending_approval'
+      ORDER BY email_verified_at ASC, created_at ASC
+      LIMIT ? OFFSET ?`,
+    [pageSize, offset]
+  );
+  res.json({ rows, total: totalRows[0].total, page, pageSize });
+}));
+
 // GET /api/admin/users/:id  -> dettaglio + lavagne possedute + n. media
 adminRouter.get('/users/:id', asyncHandler(async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return res.status(400).json({ error: 'Id non valido' });
 
-  const rows = await query('SELECT id, email, display_name, role, disabled_at, created_at FROM users WHERE id = ?', [id]);
+  const rows = await query(
+    `SELECT id, email, display_name, role, status, email_verified_at, approved_at, approved_by,
+            rejection_reason, disabled_at, created_at
+       FROM users WHERE id = ?`,
+    [id]
+  );
   if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
 
   const boards = await query(
@@ -149,6 +171,77 @@ adminRouter.patch('/users/:id/enable', asyncHandler(async (req, res) => {
 
   await query('UPDATE users SET disabled_at = NULL WHERE id = ?', [id]);
   await logAdminAction(req.user.id, 'user.enable', 'user', id, null);
+  res.json({ ok: true });
+}));
+
+// --- Ciclo di vita: approvazione / rifiuto / sospensione ---
+// Ogni azione passa da assertTransition (rifiuta transizioni non valide con 409),
+// scrive nell'audit log e notifica l'utente via email (best-effort).
+
+// Punto d'innesto per una futura approvazione automatica basata su regole (es. dominio
+// email aziendale). Oggi ritorna sempre false: nessuna auto-approvazione. Non chiamato
+// ancora nel flusso — è il seam previsto, non una feature attiva.
+export function shouldAutoApprove(_user) {
+  return false;
+}
+
+// POST /api/admin/users/:id/approve  { role? }  -> pending_approval => active
+adminRouter.post('/users/:id/approve', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Id non valido' });
+  const role = req.body?.role;
+  if (role !== undefined && role !== 'user' && role !== 'admin') {
+    return res.status(400).json({ error: 'Ruolo non valido' });
+  }
+
+  const rows = await query('SELECT id, email, status FROM users WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
+  assertTransition(rows[0].status, 'active');
+
+  const newRole = role || 'user';
+  await query(
+    "UPDATE users SET status = 'active', approved_at = NOW(), approved_by = ?, role = ?, rejection_reason = NULL WHERE id = ?",
+    [req.user.id, newRole, id]
+  );
+  await logAdminAction(req.user.id, 'user.approve', 'user', id, { role: newRole });
+  sendApprovalEmail(rows[0].email).catch((e) => console.error('sendApprovalEmail:', e.message));
+  res.json({ ok: true });
+}));
+
+// POST /api/admin/users/:id/reject  { reason }  -> pending_approval => rejected
+adminRouter.post('/users/:id/reject', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Id non valido' });
+  const reason = (req.body?.reason || '').trim();
+  if (!reason) return res.status(400).json({ error: 'Motivazione richiesta' });
+
+  const rows = await query('SELECT id, email, status FROM users WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
+  assertTransition(rows[0].status, 'rejected');
+
+  await query("UPDATE users SET status = 'rejected', rejection_reason = ? WHERE id = ?", [reason.slice(0, 500), id]);
+  await logAdminAction(req.user.id, 'user.reject', 'user', id, { reason: reason.slice(0, 500) });
+  sendRejectionEmail(rows[0].email, reason).catch((e) => console.error('sendRejectionEmail:', e.message));
+  res.json({ ok: true });
+}));
+
+// POST /api/admin/users/:id/suspend  -> active => suspended
+adminRouter.post('/users/:id/suspend', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Id non valido' });
+
+  // Sicurezza: un admin non può sospendere il proprio account.
+  if (id === Number(req.user.id)) {
+    return res.status(403).json({ error: 'Non puoi sospendere il tuo account' });
+  }
+
+  const rows = await query('SELECT id, email, status FROM users WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'Utente non trovato' });
+  assertTransition(rows[0].status, 'suspended');
+
+  await query("UPDATE users SET status = 'suspended' WHERE id = ?", [id]);
+  await logAdminAction(req.user.id, 'user.suspend', 'user', id, null);
+  sendSuspensionEmail(rows[0].email).catch((e) => console.error('sendSuspensionEmail:', e.message));
   res.json({ ok: true });
 }));
 
