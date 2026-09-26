@@ -54,19 +54,29 @@ test.before(async () => {
 
   if (!(serverReachable && dbReachable)) return;
 
-  // Utente normale
-  const u = await apiReq('POST', '/auth/register', { body: { email: userEmail, password: PASS, displayName: 'User Test' } });
-  assert.equal(u.status, 201, `registrazione utente fallita: ${JSON.stringify(u.body)}`);
-  userId = u.body.user.id;
-  userToken = u.body.token;
+  // La registrazione ora risponde 200 generico e non autentica: gli utenti nascono
+  // 'pending_verification'. Recupero l'id dal DB, li attivo e ottengo il token via login.
+  async function registerActivateLogin(email, role) {
+    const r = await apiReq('POST', '/auth/register', { body: { email, password: PASS, displayName: 'Test' } });
+    assert.equal(r.status, 200, `registrazione fallita: ${JSON.stringify(r.body)}`);
+    const rows = await query('SELECT id FROM users WHERE email = ?', [email]);
+    const id = rows[0].id;
+    await query(
+      "UPDATE users SET status = 'active', email_verified_at = NOW(), approved_at = NOW(), role = ? WHERE id = ?",
+      [role, id]
+    );
+    const login = await apiReq('POST', '/auth/login', { body: { email, password: PASS } });
+    assert.equal(login.status, 200, `login fallito: ${JSON.stringify(login.body)}`);
+    return { id, token: login.body.token };
+  }
 
-  // Utente admin: registro e poi promuovo via SQL (il token esistente resta valido:
-  // requireAuth rilegge il ruolo dal DB a ogni richiesta).
-  const a = await apiReq('POST', '/auth/register', { body: { email: adminEmail, password: PASS, displayName: 'Admin Test' } });
-  assert.equal(a.status, 201, `registrazione admin fallita: ${JSON.stringify(a.body)}`);
-  adminId = a.body.user.id;
-  adminToken = a.body.token;
-  await query('UPDATE users SET role = ? WHERE id = ?', ['admin', adminId]);
+  const u = await registerActivateLogin(userEmail, 'user');
+  userId = u.id;
+  userToken = u.token;
+
+  const a = await registerActivateLogin(adminEmail, 'admin');
+  adminId = a.id;
+  adminToken = a.token;
 });
 
 test.after(async () => {

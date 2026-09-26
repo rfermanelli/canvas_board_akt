@@ -76,13 +76,21 @@ test.before(async () => {
   }
 
   if (serverReachable && dbReachable) {
+    // La registrazione ora risponde 200 generico e NON restituisce id/token: l'utente
+    // nasce 'pending_verification'. Recupero l'id dal DB e lo porto ad 'active' così i
+    // test di reset/login (che richiedono un account utilizzabile) funzionano.
     const { status, body } = await apiPost('/auth/register', {
       email: testEmail,
       password: initialPassword,
       displayName: 'Reset Test',
     });
-    assert.equal(status, 201, `registrazione utente di prova fallita: ${JSON.stringify(body)}`);
-    userId = body.user.id;
+    assert.equal(status, 200, `registrazione utente di prova fallita: ${JSON.stringify(body)}`);
+    const rows = await query('SELECT id FROM users WHERE email = ?', [testEmail]);
+    userId = rows[0].id;
+    await query(
+      "UPDATE users SET status = 'active', email_verified_at = NOW(), approved_at = NOW() WHERE id = ?",
+      [userId]
+    );
   }
 });
 
