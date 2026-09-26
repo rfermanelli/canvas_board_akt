@@ -17,10 +17,15 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Token non valido' });
   }
   try {
-    const rows = await query('SELECT id, email, role, disabled_at FROM users WHERE id = ?', [payload.sub]);
+    const rows = await query('SELECT id, email, role, status, disabled_at FROM users WHERE id = ?', [payload.sub]);
     if (!rows.length) return res.status(401).json({ error: 'Utente non trovato' });
     if (rows[0].disabled_at) return res.status(403).json({ error: 'Account disattivato' });
-    req.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+    // Solo gli account attivi possono operare: una sospensione (o un account non ancora
+    // approvato) ha effetto immediato perché lo stato è riletto a ogni richiesta.
+    if (rows[0].status !== 'active') {
+      return res.status(403).json({ error: 'Account non attivo', code: rows[0].status });
+    }
+    req.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role, status: rows[0].status };
     next();
   } catch (e) {
     next(e);

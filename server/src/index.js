@@ -11,6 +11,9 @@ import { adminRouter } from './admin/routes.js';
 import { initYjs } from './realtime/yjs.js';
 
 const app = express();
+// Dietro il reverse proxy nginx: fidati di 1 hop per leggere l'IP reale del client
+// (X-Forwarded-For), così il rate limiting per-IP del login non conta tutti come un solo IP.
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
