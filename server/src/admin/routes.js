@@ -1,9 +1,14 @@
 import { Router } from 'express';
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { query } from '../db.js';
 import { requireAuth, requireAdmin } from '../auth/middleware.js';
 import { asyncHandler } from '../asyncHandler.js';
 import { assertTransition } from '../users/status.js';
 import { sendApprovalEmail, sendRejectionEmail, sendSuspensionEmail } from '../mail.js';
+
+// Directory dei file caricati (stessa di index.js e media/routes.js).
+const UPLOAD_DIR = path.resolve('uploads');
 
 // Tutte le rotte admin richiedono un utente autenticato E amministratore.
 // Il controllo è SEMPRE lato server (requisito): l'interfaccia si limita a nascondere.
@@ -332,6 +337,31 @@ adminRouter.get('/media', asyncHandler(async (req, res) => {
     [...params, pageSize, offset]
   );
   res.json({ rows, total: totalRows[0].total, page, pageSize });
+}));
+
+// DELETE /api/admin/media/:id  (rimuove la riga in DB + best-effort il file dal disco)
+adminRouter.delete('/media/:id', asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Id non valido' });
+
+  const rows = await query('SELECT id, kind, filename, url, board_id FROM media_assets WHERE id = ?', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'Media non trovato' });
+
+  await query('DELETE FROM media_assets WHERE id = ?', [id]);
+
+  // Rimozione best-effort del file: dal solo basename dell'url (path.basename evita
+  // path traversal) risolto dentro UPLOAD_DIR. Il fallimento non blocca l'operazione.
+  const base = path.basename(rows[0].url || '');
+  if (base) {
+    await fs.unlink(path.join(UPLOAD_DIR, base)).catch(() => {});
+    // Per i .pptx rimuove anche il PDF sfogliabile generato con lo stesso nome base.
+    if (rows[0].kind === 'pptx') {
+      await fs.unlink(path.join(UPLOAD_DIR, base.replace(/\.[^.]+$/, '.pdf'))).catch(() => {});
+    }
+  }
+
+  await logAdminAction(req.user.id, 'media.delete', 'media', id, { filename: rows[0].filename, board_id: rows[0].board_id });
+  res.json({ ok: true });
 }));
 
 // --- Audit log ---

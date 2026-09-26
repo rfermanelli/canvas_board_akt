@@ -276,3 +276,28 @@ test('14. un utente NON admin non può elencare i media (403)', async (t) => {
   const r = await apiReq('GET', '/admin/media', { token: userToken });
   assert.equal(r.status, 403);
 });
+
+test('15. un admin elimina un media (riga rimossa); un non-admin riceve 403', async (t) => {
+  if (skipIfUnreachable(t)) return;
+  const created = await apiReq('POST', '/boards', { token: userToken, body: { name: `MediaDel Board ${stamp}` } });
+  assert.equal(created.status, 201);
+  const boardId = created.body.id;
+  // url verso un file inesistente: l'unlink best-effort non deve far fallire la delete.
+  const ins = await query(
+    'INSERT INTO media_assets (board_id, uploader_id, kind, filename, mime, size_bytes, url) VALUES (?,?,?,?,?,?,?)',
+    [boardId, userId, 'image', `del_${stamp}.png`, 'image/png', 100, `/uploads/nonexistent_${stamp}.png`]
+  );
+  const mediaId = ins.insertId;
+
+  const forbidden = await apiReq('DELETE', `/admin/media/${mediaId}`, { token: userToken });
+  assert.equal(forbidden.status, 403);
+  let still = await query('SELECT id FROM media_assets WHERE id = ?', [mediaId]);
+  assert.equal(still.length, 1, 'il media non deve essere eliminato da un non-admin');
+
+  const del = await apiReq('DELETE', `/admin/media/${mediaId}`, { token: adminToken });
+  assert.equal(del.status, 200);
+  still = await query('SELECT id FROM media_assets WHERE id = ?', [mediaId]);
+  assert.equal(still.length, 0, 'la riga media deve essere rimossa');
+
+  await query('DELETE FROM boards WHERE id = ?', [boardId]);
+});
