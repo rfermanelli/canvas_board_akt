@@ -80,6 +80,22 @@ export async function ensureSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `).catch((e) => console.error('ensureSchema:', e.message));
 
+  // Log delle azioni dell'utente (mostrato nel pannello utente /account/activity).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_activity_log (
+      id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id     BIGINT UNSIGNED NULL,
+      action      VARCHAR(64) NOT NULL,
+      entity_type VARCHAR(32) NOT NULL,
+      entity_id   BIGINT UNSIGNED NULL,
+      details     JSON NULL,
+      created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_user_activity_user (user_id, id),
+      CONSTRAINT fk_user_activity_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `).catch((e) => console.error('ensureSchema:', e.message));
+
   // Tabella dei token per il recupero password (DB già esistenti senza schema.sql aggiornato).
   await pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (

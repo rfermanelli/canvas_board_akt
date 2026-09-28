@@ -8,6 +8,7 @@ import { authRouter } from './auth/routes.js';
 import { boardsRouter } from './boards/routes.js';
 import { mediaRouter } from './media/routes.js';
 import { adminRouter } from './admin/routes.js';
+import { accountRouter } from './account/routes.js';
 import { initYjs } from './realtime/yjs.js';
 
 const app = express();
@@ -22,6 +23,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/boards', boardsRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/account', accountRouter);
 
 // File media caricati (Fase 5: sostituibile con storage object-compatibile).
 app.use('/uploads', express.static(path.resolve('uploads'), {

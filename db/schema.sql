@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
   CONSTRAINT fk_audit_admin FOREIGN KEY (admin_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Log delle azioni dell'utente (crea/rinomina/elimina/duplica/condividi lavagna,
+-- upload media). Mostrato nel pannello utente (/account/activity). Distinto da
+-- admin_audit_log, che traccia invece le azioni degli amministratori.
+CREATE TABLE IF NOT EXISTS user_activity_log (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id     BIGINT UNSIGNED NULL,
+  action      VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(32) NOT NULL,
+  entity_id   BIGINT UNSIGNED NULL,
+  details     JSON NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_user_activity_user (user_id, id),
+  CONSTRAINT fk_user_activity_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Token per il recupero password ("Password dimenticata?"). In DB si salva solo
 -- l'hash SHA-256 del token; il token in chiaro vive solo nel link via email.
 CREATE TABLE IF NOT EXISTS password_reset_tokens (

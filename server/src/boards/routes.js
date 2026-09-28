@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { query, pool } from '../db.js';
 import { requireAuth, requireBoardRole } from '../auth/middleware.js';
 import { asyncHandler } from '../asyncHandler.js';
+import { logUserActivity } from '../users/activity.js';
 
 const UPLOAD_DIR = path.resolve('uploads');
 
@@ -39,6 +40,7 @@ boardsRouter.post('/', asyncHandler(async (req, res) => {
     const [r] = await conn.query('INSERT INTO boards (owner_id, name) VALUES (?, ?)', [req.user.id, name]);
     await conn.query('INSERT INTO board_content (board_id, doc) VALUES (?, ?)', [r.insertId, JSON.stringify(EMPTY_DOC)]);
     await conn.commit();
+    await logUserActivity(req.user.id, 'board.create', 'board', r.insertId, { name });
     res.status(201).json({ id: r.insertId, name, role: 'owner' });
   } catch (e) {
     await conn.rollback();
@@ -60,6 +62,8 @@ boardsRouter.put('/:id', asyncHandler(requireBoardRole('editor')), asyncHandler(
   const { name, doc } = req.body || {};
   if (typeof name === 'string') {
     await query('UPDATE boards SET name = ? WHERE id = ?', [name.slice(0, 200), req.params.id]);
+    // Solo la rinomina viene loggata; i salvataggi del doc (autosave frequente) no.
+    await logUserActivity(req.user.id, 'board.rename', 'board', Number(req.params.id), { name: name.slice(0, 200) });
   }
   if (doc !== undefined) {
     await query(
@@ -127,6 +131,7 @@ boardsRouter.post('/:id/duplicate', asyncHandler(requireBoardRole('viewer')), as
     await conn.beginTransaction();
     const newId = await copyBoardInto(conn, req.params.id, req.user.id, `${src[0].name} (copia)`);
     await conn.commit();
+    await logUserActivity(req.user.id, 'board.duplicate', 'board', newId, { from: Number(req.params.id), name: `${src[0].name} (copia)` });
     res.status(201).json({ id: newId });
   } catch (e) {
     await conn.rollback();
@@ -138,7 +143,9 @@ boardsRouter.post('/:id/duplicate', asyncHandler(requireBoardRole('viewer')), as
 
 // DELETE /api/boards/:id  (solo owner)
 boardsRouter.delete('/:id', asyncHandler(requireBoardRole('owner')), asyncHandler(async (req, res) => {
+  const b = await query('SELECT name FROM boards WHERE id = ?', [req.params.id]);
   await query('DELETE FROM boards WHERE id = ?', [req.params.id]); // FK ON DELETE CASCADE pulisce il resto
+  await logUserActivity(req.user.id, 'board.delete', 'board', Number(req.params.id), { name: b[0]?.name });
   res.json({ ok: true });
 }));
 
@@ -195,12 +202,14 @@ boardsRouter.post('/:id/share', asyncHandler(requireBoardRole('owner')), asyncHa
       conn.release();
     }
   }
+  await logUserActivity(req.user.id, 'board.share', 'board', Number(req.params.id), { email, role });
   res.json({ ok: true });
 }));
 
 // DELETE /api/boards/:id/share/:userId  (solo owner)
 boardsRouter.delete('/:id/share/:userId', asyncHandler(requireBoardRole('owner')), asyncHandler(async (req, res) => {
   await query('DELETE FROM board_collaborators WHERE board_id = ? AND user_id = ?', [req.params.id, req.params.userId]);
+  await logUserActivity(req.user.id, 'board.unshare', 'board', Number(req.params.id), { user_id: Number(req.params.userId) });
   res.json({ ok: true });
 }));
 

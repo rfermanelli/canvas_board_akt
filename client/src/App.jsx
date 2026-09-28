@@ -16,6 +16,10 @@ import AdminUserDetail from './pages/Admin/AdminUserDetail.jsx';
 import AdminBoards from './pages/Admin/AdminBoards.jsx';
 import AdminMedia from './pages/Admin/AdminMedia.jsx';
 import AdminAuditLog from './pages/Admin/AdminAuditLog.jsx';
+import AccountLayout from './pages/Account/AccountLayout.jsx';
+import AccountBoards from './pages/Account/AccountBoards.jsx';
+import AccountMedia from './pages/Account/AccountMedia.jsx';
+import AccountActivity from './pages/Account/AccountActivity.jsx';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +45,11 @@ export default function App() {
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/profile" element={<Protected><Profile /></Protected>} />
       <Route path="/board/:id" element={<Protected><Board /></Protected>} />
+      <Route path="/account" element={<Protected><AccountLayout /></Protected>}>
+        <Route index element={<AccountBoards />} />
+        <Route path="media" element={<AccountMedia />} />
+        <Route path="activity" element={<AccountActivity />} />
+      </Route>
       <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
         <Route index element={<AdminHome />} />
         <Route path="pending" element={<AdminPending />} />

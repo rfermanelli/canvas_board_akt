@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { query } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { asyncHandler } from '../asyncHandler.js';
+import { logUserActivity } from '../users/activity.js';
 
 const execFileP = promisify(execFile);
 
@@ -72,6 +73,7 @@ mediaRouter.post('/', requireAuth, upload.single('file'), asyncHandler(async (re
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [boardId, req.user.id, kind, req.file.originalname, req.file.mimetype, req.file.size, url]
   );
+  await logUserActivity(req.user.id, 'media.upload', 'media', result.insertId, { filename: req.file.originalname, kind, board_id: boardId ? Number(boardId) : null });
   // Per i .pptx genera anche un PDF sfogliabile in-canvas (best-effort).
   const pdfUrl = kind === 'pptx' ? await pptxToPdf(UPLOAD_DIR, req.file.filename) : null;
   res.status(201).json({ id: result.insertId, kind, url, pdfUrl });
