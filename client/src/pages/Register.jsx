@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { styles } from './Login.jsx';
 
+// Stesso controllo del backend (isValidEmail in server/src/auth/routes.js): dà un
+// errore immediato e chiaro prima di chiamare l'API, oltre alla validazione nativa.
+const isValidEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
 export default function Register() {
   const { register } = useAuth();
   const [displayName, setDisplayName] = useState('');
@@ -15,6 +19,7 @@ export default function Register() {
   async function submit(e) {
     e.preventDefault();
     setErr('');
+    if (!isValidEmail(email.trim())) { setErr('Inserisci un indirizzo email valido.'); return; }
     setLoading(true);
     try {
       const data = await register(email, password, displayName);

@@ -91,16 +91,26 @@ adminRouter.get('/users', asyncHandler(async (req, res) => {
   res.json({ rows, total: totalRows[0].total, page, pageSize });
 }));
 
-// GET /api/admin/pending  -> utenti in attesa di approvazione (email verificata)
+// GET /api/admin/pending?page&pageSize&q  -> utenti in attesa di approvazione (email verificata)
 adminRouter.get('/pending', asyncHandler(async (req, res) => {
   const { page, pageSize, offset } = pagination(req);
-  const totalRows = await query("SELECT COUNT(*) AS total FROM users WHERE status = 'pending_approval'");
+  const q = (req.query.q || '').trim();
+
+  const where = ["status = 'pending_approval'"];
+  const params = [];
+  if (q) {
+    where.push('(email LIKE ? OR display_name LIKE ?)');
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  const whereSql = `WHERE ${where.join(' AND ')}`;
+
+  const totalRows = await query(`SELECT COUNT(*) AS total FROM users ${whereSql}`, params);
   const rows = await query(
     `SELECT id, email, display_name, role, status, email_verified_at, created_at
-       FROM users WHERE status = 'pending_approval'
+       FROM users ${whereSql}
       ORDER BY email_verified_at ASC, created_at ASC
       LIMIT ? OFFSET ?`,
-    [pageSize, offset]
+    [...params, pageSize, offset]
   );
   res.json({ rows, total: totalRows[0].total, page, pageSize });
 }));
