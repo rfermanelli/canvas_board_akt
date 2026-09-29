@@ -53,7 +53,9 @@ export default function Dashboard() {
           {user?.role === 'admin' && (
             <button style={s.ghost} onClick={() => nav('/admin')}><Shield size={15} style={{ verticalAlign: '-3px' }} /> Admin</button>
           )}
-          <button style={s.ghost} onClick={() => nav('/account')}><LayoutDashboard size={15} style={{ verticalAlign: '-3px' }} /> Pannello</button>
+          {user?.role !== 'admin' && (
+            <button style={s.ghost} onClick={() => nav('/account')}><LayoutDashboard size={15} style={{ verticalAlign: '-3px' }} /> Pannello</button>
+          )}
           <button style={s.ghost} onClick={() => nav('/profile')}>Profilo</button>
           <button style={s.primary} onClick={create}><Plus size={15} style={{ verticalAlign: '-3px' }} /> Nuova</button>
           <button style={s.ghost} onClick={logout}>Esci</button>
