@@ -13,7 +13,7 @@ import {
   ArrowDown, Pencil, Play, Copy, CopyPlus, Trash2, ClipboardPaste, Link as LinkIcon,
   List, ChevronDown, ChevronLeft, ChevronRight, Square, Circle as CircleIcon,
   Triangle, Diamond, Pentagon, Hexagon, Star as StarIcon, ArrowRight, Slash, Presentation, Move, Spline, Smile,
-  Squircle, Octagon, TriangleRight, User, GripVertical, GripHorizontal, MoveHorizontal, MoveVertical,
+  Squircle, Octagon, TriangleRight, User, GripVertical, GripHorizontal, MoveHorizontal, MoveVertical, Home,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -1554,6 +1554,7 @@ export default function Board() {
 
           {/* Card in alto a sinistra: menù principale + nome + Free (stile FigJam). */}
           <div style={t.tlCard}>
+            <button style={t.iconBtn} title="Home" onClick={() => nav('/')}><Home size={17} /></button>
             <Dropdown label={<span style={t.logo}><Menu size={18} style={{ verticalAlign: '-4px' }} /></span>} align="left" open={openMenu === 'main'} onToggle={() => toggleMenu('main')}>
               {canEdit && <MenuItem onClick={() => { setOpenMenu(null); save(); }}><MIcon icon={Save} />Salva</MenuItem>}
               <MenuItem onClick={() => { setOpenMenu(null); exportPNG(); }}><MIcon icon={Download} />Esporta PNG</MenuItem>
