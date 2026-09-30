@@ -14,6 +14,7 @@ import {
   List, ChevronDown, ChevronLeft, ChevronRight, Square, Circle as CircleIcon,
   Triangle, Diamond, Pentagon, Hexagon, Star as StarIcon, ArrowRight, Slash, Presentation, Move, Spline, Smile,
   Squircle, Octagon, TriangleRight, User, GripVertical, GripHorizontal, MoveHorizontal, MoveVertical, Home,
+  AlignLeft, AlignCenter, AlignRight,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -1229,7 +1230,14 @@ export default function Board() {
           )}
         </div>
         <button style={{ ...nt.btn, ...(obj.bold ? nt.on : {}), fontWeight: 700 }} title="Grassetto" onClick={() => patch({ bold: !obj.bold })}>B</button>
+        <button style={{ ...nt.btn, ...(obj.italic ? nt.on : {}), fontStyle: 'italic' }} title="Corsivo" onClick={() => patch({ italic: !obj.italic })}>I</button>
+        <button style={{ ...nt.btn, ...(obj.underline ? nt.on : {}), textDecoration: 'underline' }} title="Sottolineato" onClick={() => patch({ underline: !obj.underline })}>U</button>
         <button style={{ ...nt.btn, ...(obj.strike ? nt.on : {}), textDecoration: 'line-through' }} title="Barrato" onClick={() => patch({ strike: !obj.strike })}>S</button>
+        <span style={nt.sep} />
+        <button style={{ ...nt.btn, ...((obj.align || 'left') === 'left' ? nt.on : {}) }} title="Allinea a sinistra" onClick={() => patch({ align: 'left' })}><AlignLeft size={15} /></button>
+        <button style={{ ...nt.btn, ...(obj.align === 'center' ? nt.on : {}) }} title="Allinea al centro" onClick={() => patch({ align: 'center' })}><AlignCenter size={15} /></button>
+        <button style={{ ...nt.btn, ...(obj.align === 'right' ? nt.on : {}) }} title="Allinea a destra" onClick={() => patch({ align: 'right' })}><AlignRight size={15} /></button>
+        <span style={nt.sep} />
         <button style={{ ...nt.btn, ...(obj.link ? nt.on : {}) }} title="Link" onClick={setLink}><LinkIcon size={15} /></button>
         <button style={{ ...nt.btn, ...(obj.list ? nt.on : {}) }} title="Elenco puntato" onClick={() => patch({ list: !obj.list })}><List size={15} /></button>
       </div>
@@ -1317,13 +1325,14 @@ export default function Board() {
                   const bw = Math.max(24, Math.max(1, ...lines.map((l) => l.length)) * fs * 0.6) + 20;
                   const bh = Math.max(fs, lines.length * fs * 1.35) + 14;
                   const body = o.list ? bulletize(o.text) : o.text;
-                  const deco = [o.strike && 'line-through', o.link && 'underline'].filter(Boolean).join(' ');
+                  const deco = [o.strike && 'line-through', (o.underline || o.link) && 'underline'].filter(Boolean).join(' ');
+                  const fstyle = [o.italic && 'italic', o.bold && 'bold'].filter(Boolean).join(' ') || 'normal';
                   const hasBox = !!(o.bg || o.stroke);
                   return (
                     <Group key={o.id} ref={setRef(o.id)} {...nodeProps(o)} onDblClick={() => editSticky(o)} onDblTap={() => editSticky(o)} x={o.x} y={o.y} rotation={o.rotation}>
                       {hasBox && <Rect x={-10} y={-7} width={bw} height={bh} fill={o.bg || 'transparent'} stroke={o.stroke || undefined} strokeWidth={o.stroke ? 2 : 0} cornerRadius={6} />}
-                      <Text x={0} y={0} text={body} fontSize={fs} fontFamily={o.fontFamily || FONTS[0].key} fill={o.fill || '#212529'}
-                        fontStyle={o.bold ? 'bold' : 'normal'} textDecoration={deco} lineHeight={1.35} />
+                      <Text x={0} y={0} width={bw} align={o.align || 'left'} text={body} fontSize={fs} fontFamily={o.fontFamily || FONTS[0].key} fill={o.fill || '#212529'}
+                        fontStyle={fstyle} textDecoration={deco} lineHeight={1.35} />
                     </Group>
                   );
                 }
@@ -1332,7 +1341,8 @@ export default function Board() {
                   const ink = readable(o.fill);
                   const bodyColor = o.textColor || ink; // colore testo esplicito, altrimenti auto-contrasto
                   const body = hasText ? (o.list ? bulletize(o.text) : o.text) : NOTE_PLACEHOLDER;
-                  const deco = [o.strike && 'line-through', o.link && 'underline'].filter(Boolean).join(' ');
+                  const deco = [o.strike && 'line-through', (o.underline || o.link) && 'underline'].filter(Boolean).join(' ');
+                  const fstyle = [o.italic && 'italic', o.bold && 'bold'].filter(Boolean).join(' ') || 'normal';
                   // Nota come GRUPPO unico (sfondo + testo): così durante il trascinamento
                   // finestra e testo si spostano insieme, non separatamente.
                   return (
@@ -1343,8 +1353,8 @@ export default function Board() {
                         shadowColor="rgba(0,0,0,0.14)" shadowBlur={10} shadowOffsetY={4} />
                       <Text x={0} y={0} width={o.width} height={o.height}
                         text={body} padding={18} fontSize={o.fontSize || 18} fontFamily={o.fontFamily || FONTS[0].key}
-                        fontStyle={o.bold ? 'bold' : 'normal'} textDecoration={deco} lineHeight={1.35}
-                        fill={hasText ? bodyColor : 'rgba(60,60,70,0.4)'} align="left" verticalAlign="top" listening={false} />
+                        fontStyle={fstyle} textDecoration={deco} lineHeight={1.35}
+                        fill={hasText ? bodyColor : 'rgba(60,60,70,0.4)'} align={o.align || 'left'} verticalAlign="top" listening={false} />
                       {o.author && <Text x={0} y={0} width={o.width} height={o.height}
                         text={o.author} padding={14} fontSize={12} fill={ink} opacity={0.6} align="left" verticalAlign="bottom" listening={false} />}
                       {o.link && <Text x={0} y={0} width={o.width} height={o.height}
@@ -1540,6 +1550,7 @@ export default function Board() {
                       display: 'block', width: '100%', height: h,
                       boxSizing: 'border-box', color: ink, resize: 'none', outline: 'none', overflow: 'auto',
                       fontSize: (o.fontSize || 18) * view.scale, lineHeight: 1.35, pointerEvents: 'auto',
+                      fontStyle: o.italic ? 'italic' : 'normal', textDecoration: o.underline ? 'underline' : 'none', textAlign: o.align || 'left',
                       ...skin,
                     }} />
                 </div>
