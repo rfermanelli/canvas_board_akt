@@ -91,6 +91,131 @@ const SIZES = [10, 12, 14, 16, 18, 22, 26, 32, 40, 48, 64].map((v) => ({ v, labe
 const bulletize = (s) => s.split('\n').map((ln) => (ln.trim() ? '•  ' + ln : ln)).join('\n');
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// ---- Rich text (formattazione parziale del testo) -----------------------------------
+// Un oggetto testo può avere `runs`: segmenti stilati [{ text, bold, italic, underline,
+// strike, color }]. Se assenti, si deriva un unico run dallo stile dell'intero oggetto
+// (retro-compatibilità: gli oggetti vecchi continuano a funzionare senza migrazione).
+const textRuns = (o) => (Array.isArray(o.runs) && o.runs.length)
+  ? o.runs
+  : [{ text: o.text || '', bold: o.bold, italic: o.italic, underline: o.underline, strike: o.strike, color: o.fill }];
+// Testo piano concatenato dai runs (per bbox/export/ricerca): teniamo sempre `o.text` in sync.
+const runsPlain = (runs) => runs.map((r) => r.text).join('');
+// Misura la larghezza di un segmento con il font effettivo (contesto 2D offscreen, come Konva).
+const _measCtx = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
+const segFont = (r, fontFamily, fs) => `${r.italic ? 'italic ' : ''}${r.bold ? 'bold ' : ''}${fs}px ${fontFamily}`;
+const measureSeg = (text, r, fontFamily, fs) => {
+  if (!_measCtx || !text) return (text ? text.length : 0) * fs * 0.6;
+  _measCtx.font = segFont(r, fontFamily, fs);
+  return _measCtx.measureText(text).width;
+};
+// Spezza i runs in righe visive (per '\n') preservando lo stile di ogni segmento.
+function layoutRichLines(runs) {
+  const lines = [[]];
+  for (const r of runs) {
+    const parts = String(r.text).split('\n');
+    parts.forEach((part, i) => {
+      if (i > 0) lines.push([]);
+      if (part.length) lines[lines.length - 1].push({ ...r, text: part });
+    });
+  }
+  return lines;
+}
+// Vero se TUTTI i runs (non vuoti) hanno attivo il marchio booleano `key`.
+const allRunsHave = (o, key) => { const rs = textRuns(o).filter((r) => r.text.length); return rs.length > 0 && rs.every((r) => r[key]); };
+
+// ---- Editor rich text: conversioni carattere <-> runs <-> DOM ------------------------
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const rgbToHex = (c) => {
+  if (!c) return null;
+  if (c[0] === '#') return c;
+  const m = c.match(/\d+/g); if (!m) return c;
+  const [r, g, b] = m.map(Number);
+  return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+};
+const sameStyle = (a, b) => a.bold === b.bold && a.italic === b.italic && a.underline === b.underline && a.strike === b.strike && a.color === b.color;
+// runs -> array di caratteri con stile (per applicare marchi su un intervallo).
+const runsToChars = (runs) => { const a = []; for (const r of runs) for (const ch of String(r.text)) a.push({ ch, bold: !!r.bold, italic: !!r.italic, underline: !!r.underline, strike: !!r.strike, color: r.color }); return a; };
+// array di caratteri -> runs (fonde caratteri consecutivi con lo stesso stile).
+const charsToRuns = (chars) => {
+  const runs = [];
+  for (const c of chars) {
+    const st = { bold: c.bold, italic: c.italic, underline: c.underline, strike: c.strike, color: c.color };
+    const last = runs[runs.length - 1];
+    if (last && sameStyle(last, st)) last.text += c.ch; else runs.push({ text: c.ch, ...st });
+  }
+  return runs.length ? runs : [{ text: '' }];
+};
+// Applica/attiva un marchio ai caratteri [s,e): per il colore imposta il valore, per i
+// booleani fa toggle (se erano TUTTI attivi disattiva, altrimenti attiva).
+const applyMarkChars = (chars, s, e, key, value) => {
+  if (s >= e) return;
+  if (key === 'color') { for (let i = s; i < e; i++) chars[i].color = value; return; }
+  const allOn = chars.slice(s, e).every((c) => c[key]);
+  for (let i = s; i < e; i++) chars[i][key] = !allOn;
+};
+// runs -> HTML dell'editor (uno <span> stilato per run; '\n' reso da white-space:pre-wrap).
+const runsToHTML = (runs, def) => (runs.map((r) => {
+  const st = [`color:${r.color || def}`];
+  if (r.bold) st.push('font-weight:700');
+  if (r.italic) st.push('font-style:italic');
+  const dec = [r.strike && 'line-through', r.underline && 'underline'].filter(Boolean).join(' ');
+  if (dec) st.push('text-decoration:' + dec);
+  return `<span style="${st.join(';')}">${escapeHtml(r.text)}</span>`;
+}).join('')) || '<span></span>';
+// Serializza il contenuto dell'editor (DOM) in runs, leggendo lo stile calcolato di ogni nodo di testo.
+const serializeEditor = (div, def) => {
+  const runs = [];
+  const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  let cur;
+  while ((cur = walker.nextNode())) {
+    const text = cur.textContent;
+    if (!text) continue;
+    const el = cur.parentElement;
+    const cs = el ? window.getComputedStyle(el) : null;
+    const dec = cs ? (cs.textDecorationLine || cs.textDecoration || '') : '';
+    const st = {
+      bold: cs ? (parseInt(cs.fontWeight, 10) >= 600 || cs.fontWeight === 'bold') : false,
+      italic: cs ? cs.fontStyle.includes('italic') : false,
+      underline: dec.includes('underline'),
+      strike: dec.includes('line-through'),
+      color: cs ? rgbToHex(cs.color) : def,
+    };
+    const last = runs[runs.length - 1];
+    if (last && sameStyle(last, st)) last.text += text; else runs.push({ text, ...st });
+  }
+  return runs.length ? runs : [{ text: '' }];
+};
+// Offset (in caratteri) di un punto (node,offset) rispetto al testo dell'editor.
+const textLenBefore = (div, node, offset) => {
+  const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  let n = 0, cur;
+  while ((cur = walker.nextNode())) { if (cur === node) return n + offset; n += cur.textContent.length; }
+  return n;
+};
+// Intervallo [start,end) della selezione corrente dentro l'editor.
+const getSelOffsets = (div) => {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !div.contains(sel.anchorNode)) return { start: 0, end: 0 };
+  const r = sel.getRangeAt(0);
+  const a = textLenBefore(div, r.startContainer, r.startOffset);
+  const b = textLenBefore(div, r.endContainer, r.endOffset);
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+};
+// Ripristina la selezione [start,end) nell'editor camminando sui nodi di testo.
+const setSelOffsets = (div, start, end) => {
+  const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  let n = 0, cur, sN = null, sO = 0, eN = null, eO = 0;
+  while ((cur = walker.nextNode())) {
+    const len = cur.textContent.length;
+    if (sN === null && start <= n + len) { sN = cur; sO = start - n; }
+    if (end <= n + len) { eN = cur; eO = end - n; break; }
+    n += len;
+  }
+  if (!sN) { sN = div; sO = 0; }
+  if (!eN) { eN = sN; eO = sO; }
+  try { const r = document.createRange(); r.setStart(sN, sO); r.setEnd(eN, eO); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch { /* noop */ }
+};
+
 // Icone SVG inline per le forme senza icona Lucide dedicata (ettagono/parallelogramma/trapezio).
 const polyIconPts = (n) => Array.from({ length: n }, (_, i) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return `${(12 + 8 * Math.cos(a)).toFixed(1)},${(12 + 8 * Math.sin(a)).toFixed(1)}`; }).join(' ');
 const SvgShape = (pts) => ({ size = 16 }) => (
@@ -346,6 +471,8 @@ export default function Board() {
   const viewBeforePresent = useRef(null);   // vista da ripristinare uscendo dalla presentazione
   const camAnim = useRef(0);                // id requestAnimationFrame del tween camera (0 = nessuno)
   const barRef = useRef(null);              // nodo DOM della toolbar (per posizione/dimensioni reali nel drag)
+  const editorRef = useRef(null);           // nodo DOM dell'editor rich text (contentEditable) del testo
+  const editorInit = useRef('');            // HTML iniziale dell'editor (stabile per sessione, evita reset del caret)
   const canEdit = role === 'owner' || role === 'editor';
 
   // Persistenza posizione/orientamento della toolbar.
@@ -499,7 +626,40 @@ export default function Board() {
     if (!canEdit || presenting) return;
     setSelectedIds([o.id]);
     setInlineText(o.text || '');
+    if (o.type === 'text') editorInit.current = runsToHTML(textRuns(o), o.fill || '#212529');
     setInlineEdit(o.id);
+  }
+  // Applica un marchio (color/bold/italic/underline/strike) a un oggetto testo tramite il
+  // modello a runs: se si sta editando, agisce sulla selezione corrente (o su tutto il testo
+  // se la selezione è vuota); altrimenti agisce sull'intero testo. Vedi rich text.
+  function editorMark(o, key, value) {
+    const def = o.fill || '#212529';
+    const div = editorRef.current;
+    if (inlineEdit === o.id && div) {
+      const off = getSelOffsets(div);
+      const chars = runsToChars(serializeEditor(div, def));
+      const s = off.start === off.end ? 0 : off.start;
+      const e = off.start === off.end ? chars.length : off.end;
+      applyMarkChars(chars, s, e, key, value);
+      const runs = charsToRuns(chars);
+      newStep(); updateObject({ ...o, runs, text: runsPlain(runs) });
+      div.innerHTML = runsToHTML(runs, def); setSelOffsets(div, s, e); div.focus();
+    } else {
+      const chars = runsToChars(textRuns(o));
+      applyMarkChars(chars, 0, chars.length, key, value);
+      const runs = charsToRuns(chars);
+      newStep(); updateObject({ ...o, runs, text: runsPlain(runs) });
+    }
+  }
+  // Inserisce un a-capo ('\n') alla posizione del caret nell'editor rich text.
+  function insertNewline() {
+    const div = editorRef.current; if (!div) return;
+    const sel = window.getSelection(); if (!sel.rangeCount) return;
+    const r = sel.getRangeAt(0); r.deleteContents();
+    const tn = document.createTextNode('\n'); r.insertNode(tn);
+    r.setStartAfter(tn); r.setEndAfter(tn); sel.removeAllRanges(); sel.addRange(r);
+    const o = objects.find((x) => x.id === inlineEdit);
+    if (o) { const runs = serializeEditor(div, o.fill || '#212529'); updateObject({ ...o, runs, text: runsPlain(runs) }); }
   }
   function commitInline(v) {
     setInlineText(v);
@@ -864,7 +1024,7 @@ export default function Board() {
     else if (o.type === 'ellipse') updateObject({ ...base, rx: Math.max(5, o.rx * sx), ry: Math.max(5, o.ry * sy) });
     else if (o.type === 'poly') updateObject({ ...base, radius: Math.max(5, o.radius * (sx + sy) / 2) });
     else if (o.type === 'star') updateObject({ ...base, radius: Math.max(5, o.radius * (sx + sy) / 2), innerRadius: Math.max(3, o.innerRadius * (sx + sy) / 2) });
-    else if (o.type === 'text') updateObject({ ...base, fontSize: Math.max(6, o.fontSize * sy) });
+    else if (o.type === 'text') updateObject({ ...base, fontSize: Math.max(6, Math.round(o.fontSize * sy)) });
     else if (o.type === 'arrow' || o.type === 'straight' || o.type === 'cpoly') {
       // Baking dello scale nei punti (i punti sono in coordinate canvas assolute, x/y del nodo = 0).
       const pts = o.points.map((v, i) => (i % 2 === 0 ? node.x() + v * sx : node.y() + v * sy));
@@ -1152,12 +1312,12 @@ export default function Board() {
     const bgVal = isNote ? obj.fill : (obj.bg || 'transparent');
     const textVal = isNote ? (obj.textColor || readable(obj.fill)) : (obj.fill || '#212529');
     const font = FONTS.find((f) => f.key === (obj.fontFamily || FONTS[0].key)) || FONTS[0];
-    const size = SIZES.find((s) => s.v === obj.fontSize) || { v: obj.fontSize, label: String(obj.fontSize || (isNote ? 18 : 24)) };
+    const size = SIZES.find((s) => s.v === obj.fontSize) || { v: obj.fontSize, label: String(Math.round(obj.fontSize) || (isNote ? 18 : 24)) };
     const w = isNote ? obj.width : Math.max(60, String(obj.text || 'Testo').length * (obj.fontSize || 24) * 0.6);
     const p = toScreen(obj.x, obj.y);
     const left = p.x + (w * view.scale) / 2;
     const top = Math.max(46, p.y - 14);
-    const swatch = (c, cur, onClick) => <button key={c} title={c} onClick={onClick} style={{ ...nt.sw, background: c, outline: c === cur ? '2px solid #fff' : 'none' }} />;
+    const swatch = (c, cur, onClick) => <button key={c} title={c} onMouseDown={(e) => e.preventDefault()} onClick={onClick} style={{ ...nt.sw, background: c, outline: c === cur ? '2px solid #fff' : 'none' }} />;
     const custom = (val, onChange) => (
       <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 4px 2px', fontSize: 12, color: '#cfcfe0' }}>
         Personalizzato
@@ -1167,6 +1327,12 @@ export default function Board() {
     const setBgPreset = (c) => { if (isNote) patch({ fill: c.fill, stroke: c.border, textColor: readable(c.fill) }); else patch({ bg: c.fill, stroke: c.border, fill: readable(c.fill) }); setNoteMenu(null); };
     const setBgCustom = (hex) => isNote ? patch({ fill: hex, stroke: hex, textColor: readable(hex) }) : patch({ bg: hex, fill: readable(hex) });
     const setLink = async () => { const url = await askText('Link (URL):', obj.link || ''); if (url === null) return; setNoteMenu(null); patch({ link: url.trim() || undefined }); };
+    // Marchi carattere: per il testo passano dal modello a runs (per-selezione se in editing);
+    // per le note restano stile-unico dell'intero oggetto.
+    const markColor = (c, close) => { if (isNote) patch({ textColor: c }); else editorMark(obj, 'color', c); if (close) setNoteMenu(null); };
+    const toggleMark = (key) => { if (isNote) patch({ [key]: !obj[key] }); else editorMark(obj, key); };
+    const on = (key) => (isNote ? obj[key] : allRunsHave(obj, key));
+    const keepSel = { onMouseDown: (e) => e.preventDefault() }; // non perdere la selezione dell'editor al click
     return (
       <div style={{ ...nt.bar, left, top }}>
         <div style={{ position: 'relative' }}>
@@ -1219,20 +1385,20 @@ export default function Board() {
         </div>
         <span style={nt.sep} />
         <div style={{ position: 'relative' }}>
-          <button style={nt.btn} title="Colore testo" onClick={() => setNoteMenu(noteMenu === 'tcolor' ? null : 'tcolor')}>
+          <button {...keepSel} style={nt.btn} title="Colore testo" onClick={() => setNoteMenu(noteMenu === 'tcolor' ? null : 'tcolor')}>
             <span style={{ fontWeight: 700, color: textVal }}>A</span> <ChevronDown size={12} style={{ ...nt.caret, verticalAlign: 'middle' }} />
           </button>
           {noteMenu === 'tcolor' && (
             <div style={nt.pop}>
-              <div style={nt.swatches}>{PALETTE.map((c) => swatch(c, textVal, () => { patch(isNote ? { textColor: c } : { fill: c }); setNoteMenu(null); }))}</div>
-              {custom(textVal, (hex) => patch(isNote ? { textColor: hex } : { fill: hex }))}
+              <div style={nt.swatches}>{PALETTE.map((c) => swatch(c, textVal, () => markColor(c, true)))}</div>
+              {custom(textVal, (hex) => markColor(hex, false))}
             </div>
           )}
         </div>
-        <button style={{ ...nt.btn, ...(obj.bold ? nt.on : {}), fontWeight: 700 }} title="Grassetto" onClick={() => patch({ bold: !obj.bold })}>B</button>
-        <button style={{ ...nt.btn, ...(obj.italic ? nt.on : {}), fontStyle: 'italic' }} title="Corsivo" onClick={() => patch({ italic: !obj.italic })}>I</button>
-        <button style={{ ...nt.btn, ...(obj.underline ? nt.on : {}), textDecoration: 'underline' }} title="Sottolineato" onClick={() => patch({ underline: !obj.underline })}>U</button>
-        <button style={{ ...nt.btn, ...(obj.strike ? nt.on : {}), textDecoration: 'line-through' }} title="Barrato" onClick={() => patch({ strike: !obj.strike })}>S</button>
+        <button {...keepSel} style={{ ...nt.btn, ...(on('bold') ? nt.on : {}), fontWeight: 700 }} title="Grassetto" onClick={() => toggleMark('bold')}>B</button>
+        <button {...keepSel} style={{ ...nt.btn, ...(on('italic') ? nt.on : {}), fontStyle: 'italic' }} title="Corsivo" onClick={() => toggleMark('italic')}>I</button>
+        <button {...keepSel} style={{ ...nt.btn, ...(on('underline') ? nt.on : {}), textDecoration: 'underline' }} title="Sottolineato" onClick={() => toggleMark('underline')}>U</button>
+        <button {...keepSel} style={{ ...nt.btn, ...(on('strike') ? nt.on : {}), textDecoration: 'line-through' }} title="Barrato" onClick={() => toggleMark('strike')}>S</button>
         <span style={nt.sep} />
         <button style={{ ...nt.btn, ...((obj.align || 'left') === 'left' ? nt.on : {}) }} title="Allinea a sinistra" onClick={() => patch({ align: 'left' })}><AlignLeft size={15} /></button>
         <button style={{ ...nt.btn, ...(obj.align === 'center' ? nt.on : {}) }} title="Allinea al centro" onClick={() => patch({ align: 'center' })}><AlignCenter size={15} /></button>
@@ -1321,18 +1487,34 @@ export default function Board() {
                 if (o.type === 'ellipse') return <Ellipse key={o.id} ref={setRef(o.id)} {...nodeProps(o)} x={o.x} y={o.y} radiusX={o.rx} radiusY={o.ry} fill={o.fill} stroke={o.stroke} strokeWidth={o.strokeWidth} opacity={o.opacity} rotation={o.rotation} />;
                 if (o.type === 'text') {
                   const fs = o.fontSize || 24;
-                  const lines = String(o.text || '').split('\n');
-                  const bw = Math.max(24, Math.max(1, ...lines.map((l) => l.length)) * fs * 0.6) + 20;
-                  const bh = Math.max(fs, lines.length * fs * 1.35) + 14;
-                  const body = o.list ? bulletize(o.text) : o.text;
-                  const deco = [o.strike && 'line-through', (o.underline || o.link) && 'underline'].filter(Boolean).join(' ');
-                  const fstyle = [o.italic && 'italic', o.bold && 'bold'].filter(Boolean).join(' ') || 'normal';
+                  const fontFamily = o.fontFamily || FONTS[0].key;
+                  const lineH = fs * 1.35;
+                  // Righe di segmenti stilati; con l'elenco puntato si prepone un segmento "•" a ogni riga.
+                  let lines = layoutRichLines(textRuns(o));
+                  if (o.list) lines = lines.map((segs) => (segs.length ? [{ text: '•  ', color: o.fill }, ...segs] : segs));
+                  // Sottolineatura implicita se l'oggetto ha un link (comportamento preesistente).
+                  const measured = lines.map((segs) => {
+                    let w = 0;
+                    const parts = segs.map((s) => { const sw = measureSeg(s.text, s, fontFamily, fs); const seg = { ...s, w, sw }; w += sw; return seg; });
+                    return { parts, w };
+                  });
+                  const maxW = Math.max(1, ...measured.map((m) => m.w));
+                  const align = o.align || 'left';
+                  const bw = maxW + 20, bh = Math.max(fs, lines.length * lineH) + 14;
                   const hasBox = !!(o.bg || o.stroke);
                   return (
                     <Group key={o.id} ref={setRef(o.id)} {...nodeProps(o)} onDblClick={() => editSticky(o)} onDblTap={() => editSticky(o)} x={o.x} y={o.y} rotation={o.rotation}>
                       {hasBox && <Rect x={-10} y={-7} width={bw} height={bh} fill={o.bg || 'transparent'} stroke={o.stroke || undefined} strokeWidth={o.stroke ? 2 : 0} cornerRadius={6} />}
-                      <Text x={0} y={0} width={bw} align={o.align || 'left'} text={body} fontSize={fs} fontFamily={o.fontFamily || FONTS[0].key} fill={o.fill || '#212529'}
-                        fontStyle={fstyle} textDecoration={deco} lineHeight={1.35} />
+                      {measured.map((m, li) => {
+                        const x0 = align === 'center' ? (maxW - m.w) / 2 : align === 'right' ? (maxW - m.w) : 0;
+                        return m.parts.map((s, si) => (
+                          <Text key={li + '-' + si} x={x0 + s.w} y={li * lineH} text={s.text} fontSize={fs} fontFamily={fontFamily}
+                            fill={s.color || '#212529'}
+                            fontStyle={[s.italic && 'italic', s.bold && 'bold'].filter(Boolean).join(' ') || 'normal'}
+                            textDecoration={[s.strike && 'line-through', (s.underline || o.link) && 'underline'].filter(Boolean).join(' ')}
+                            lineHeight={1} />
+                        ));
+                      })}
                     </Group>
                   );
                 }
@@ -1541,18 +1723,39 @@ export default function Board() {
                     style={{ position: 'absolute', bottom: -20, left: 0, right: 0, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0 8px', background: '#4c6ef5', color: '#fff', fontSize: 11, borderBottomLeftRadius: 6, borderBottomRightRadius: 6, cursor: 'grab', pointerEvents: 'auto', touchAction: 'none', whiteSpace: 'nowrap' }}>
                     <Move size={12} style={{ verticalAlign: '-2px' }} /> trascina per spostare
                   </div>
-                  <textarea autoFocus value={inlineText}
-                    onChange={(e) => commitInline(e.target.value)}
-                    onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
-                    onKeyDown={(e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); closeInline(); } }}
-                    placeholder={isNote ? '' : 'Scrivi il testo…'}
-                    style={{
-                      display: 'block', width: '100%', height: h,
-                      boxSizing: 'border-box', color: ink, resize: 'none', outline: 'none', overflow: 'auto',
-                      fontSize: (o.fontSize || 18) * view.scale, lineHeight: 1.35, pointerEvents: 'auto',
-                      fontStyle: o.italic ? 'italic' : 'normal', textDecoration: o.underline ? 'underline' : 'none', textAlign: o.align || 'left',
-                      ...skin,
-                    }} />
+                  {isNote ? (
+                    <textarea autoFocus value={inlineText}
+                      onChange={(e) => commitInline(e.target.value)}
+                      onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
+                      onKeyDown={(e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); closeInline(); } }}
+                      placeholder=""
+                      style={{
+                        display: 'block', width: '100%', height: h,
+                        boxSizing: 'border-box', color: ink, resize: 'none', outline: 'none', overflow: 'auto',
+                        fontSize: (o.fontSize || 18) * view.scale, lineHeight: 1.35, pointerEvents: 'auto',
+                        fontStyle: o.italic ? 'italic' : 'normal', textDecoration: o.underline ? 'underline' : 'none', textAlign: o.align || 'left',
+                        ...skin,
+                      }} />
+                  ) : (
+                    // Editor rich text: contentEditable con span stilati per la formattazione per-selezione.
+                    // grassetto/corsivo/sottolineato/barrato/colore sono nei <span> (modello a runs), non qui.
+                    <div contentEditable suppressContentEditableWarning
+                      ref={(el) => { editorRef.current = el; if (el && !el._init) { el._init = true; el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } }}
+                      onInput={() => { const runs = serializeEditor(editorRef.current, o.fill || '#212529'); updateObject({ ...o, runs, text: runsPlain(runs) }); }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); closeInline(); }
+                        else if (e.key === 'Enter') { e.preventDefault(); insertNewline(); }
+                      }}
+                      dangerouslySetInnerHTML={{ __html: editorInit.current }}
+                      style={{
+                        display: 'block', width: '100%', minHeight: h,
+                        boxSizing: 'border-box', color: ink, outline: 'none', overflow: 'auto',
+                        fontSize: (o.fontSize || 24) * view.scale, lineHeight: 1.35, pointerEvents: 'auto',
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: o.align || 'left',
+                        fontFamily: o.fontFamily || FONTS[0].key,
+                        padding: 6 * view.scale, border: '1px dashed #7048e8', borderRadius: 6, background: 'rgba(255,255,255,.92)',
+                      }} />
+                  )}
                 </div>
               );
             })()}
